@@ -35,6 +35,10 @@ class DetectImg2ImgFallback(BaseStep):
                         logger.warning(f"{req.log_prefix} 发送回退提示失败: {e}")
                 req.input_image_base64 = None
                 req.strength = None
+                logger.info(
+                    f"{req.log_prefix} 模型 {req.model_id} 不支持图生图，已降级为文生图"
+                    f"（提示：可在「基础配置.默认图生图模型」配置支持图生图的模型）"
+                )
 
         req.is_img2img = req.input_image_base64 is not None
         return None
