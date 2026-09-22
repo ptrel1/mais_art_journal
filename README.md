@@ -212,7 +212,7 @@ model = "Kwai-Kolors/Kolors"                     # 模型标识
 fixed_size_enabled = false                       # 固定尺寸（关闭=LLM 自动选）
 default_size = "1024x1024"                       # 默认尺寸
 seed = -1                                        # 随机种子（-1=随机）
-guidance_scale = 2.5                             # 引导强度（CFG）
+guidance_scale = 2.5                             # 引导强度（CFG）；填 -1 = 不发送该参数（模型不支持时用）
 num_inference_steps = 20                         # 推理步数
 watermark = false                                # 是否加水印（豆包等支持）
 custom_prompt_add = ", best quality"             # 追加正面提示词

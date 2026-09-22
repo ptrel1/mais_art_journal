@@ -65,8 +65,9 @@ class DoubaoClient(BaseApiClient):
             if seed is not None and seed != -1:
                 request_params["seed"] = seed
 
+            # -1 = 该模型不支持 guidance_scale，不发送（与 openai_client 保持一致）
             guidance_scale = model_config.get("guidance_scale")
-            if guidance_scale is not None:
+            if guidance_scale is not None and guidance_scale != -1:
                 request_params["guidance_scale"] = guidance_scale
 
             # 如果有输入图片，需要特殊处理

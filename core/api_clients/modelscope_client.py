@@ -72,7 +72,9 @@ class ModelscopeClient(BaseApiClient):
                     request_data["size"] = size
                 request_data["seed"] = seed
                 request_data["steps"] = steps
-                request_data["guidance"] = guidance
+                # -1 = 不发送 guidance（部分模型不支持该参数）
+                if guidance is not None and guidance != -1:
+                    request_data["guidance"] = guidance
                 logger.info(f"{self.log_prefix} (魔搭) 使用文生图模式")
 
             logger.info(f"{self.log_prefix} (魔搭) 发起异步图片生成请求，模型: {model_name}")

@@ -88,7 +88,10 @@ class MengyuaiClient(BaseApiClient):
                 request_data["width"] = width
                 request_data["height"] = height
                 request_data["steps"] = model_config.get("num_inference_steps", 20)
-                request_data["cfg"] = model_config.get("guidance_scale", 7.0)
+                # -1 = 不发送 cfg（部分模型不支持该参数）
+                _cfg = model_config.get("guidance_scale", 7.0)
+                if _cfg is not None and _cfg != -1:
+                    request_data["cfg"] = _cfg
                 request_data["seed"] = model_config.get("seed", -1)
 
             endpoint = f"{base_url}/api/v1/generate_image"

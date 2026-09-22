@@ -46,12 +46,16 @@ class ShatangyunClient(BaseApiClient):
                 "model": model,
                 "size": size_param,
                 "steps": model_config.get("num_inference_steps", 23),
-                "scale": model_config.get("guidance_scale", 5),
                 "cfg": model_config.get("cfg", 0),
                 "sampler": model_config.get("sampler", "k_euler_ancestral"),
                 "nocache": model_config.get("nocache", 0),
                 "noise_schedule": model_config.get("noise_schedule", "karras"),
             }
+
+            # -1 = 不发送 scale（部分模型不支持该参数）
+            _scale = model_config.get("guidance_scale", 5)
+            if _scale is not None and _scale != -1:
+                params["scale"] = _scale
 
             # 添加artist参数
             artist = model_config.get("artist", "")

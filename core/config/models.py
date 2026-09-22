@@ -520,9 +520,10 @@ class ModelConfig(PluginConfigBase):
     )
     guidance_scale: float = Field(
         default=2.5,
-        ge=0.0,
+        ge=-1.0,
         le=20.0,
-        description="引导强度（CFG）",
+        description="引导强度（CFG）。填 -1 = 不发送该参数（用于不支持 guidance_scale 的模型，"
+        "如豆包 Seedream 5.0 lite）；ComfyUI 类型不支持此语义，-1 会回退为 7",
         json_schema_extra={"label": "引导强度", "step": 0.5, "group": "params", "order": 9},
     )
     num_inference_steps: int = Field(

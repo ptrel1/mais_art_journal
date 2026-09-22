@@ -187,7 +187,13 @@ class ComfyUIClient(BaseApiClient):
         workflow_str = workflow_str.replace('"${steps}"', str(int(steps)))
 
         # guidance_scale → ${cfg}
+        # 注意：工作流占位符必须替换成合法数值，故 -1（=不发送）在此类型下回退为默认 7
         cfg = model_config.get("guidance_scale", 7)
+        try:
+            if cfg is None or float(cfg) < 0:
+                cfg = 7
+        except (TypeError, ValueError):
+            cfg = 7
         workflow_str = workflow_str.replace('"${cfg}"', str(float(cfg)))
 
         # size → ${width} / ${height}
