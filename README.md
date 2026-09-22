@@ -64,7 +64,7 @@
 
 **典型用法**：文生图模型和图生图模型分开填——`default_txt2img_model` 填文生图专用模型，`default_img2img_model` 填图生图专用模型。这样自然语言画图、改图、自拍三条路自动走对模型，LLM 完全无感。普通自拍必然携带 `reference_image_path` 指定的参考图，所以即使 `llm_selfie_model` 留空也会落到第 3 行的图生图模型，不会错误地用文生图模型画自拍。
 
-> 旧配置里的 `default_model` 会在启动时自动迁移到 `default_txt2img_model`，无需手工改配置。
+> 旧配置里的 `default_model` 无需手工改动：解析时会把它作为「默认文生图模型」的回退源继续生效（见 `resolve_txt2img_model`），字段值本身不会被搬走。
 > 若某模型实际不支持图生图（模型配置里 `support_img2img = false`），即使被选为图生图默认也会自动降级为文生图，不会报错。
 
 ### 自动自拍
