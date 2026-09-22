@@ -14,6 +14,11 @@ class NonRetryableError(Exception):
     pass
 
 
+# ComfyUI 客户端返回值里的"排队中"标记：命中时上层直接返回、不进入重试循环，
+# 从而避免"误把排队当失败"触发重复提交导致队列滚雪球式堆积。
+QUEUED_MARK = "[QUEUED]"
+
+
 class BaseApiClient:
     """API客户端基类
 
@@ -173,6 +178,11 @@ class BaseApiClient:
                     return True, result
 
                 # 失败处理
+                if result.startswith(QUEUED_MARK):
+                    # 排队中而非真失败：直接返回，不触发重试（否则会重复提交、堆积队列）
+                    logger.warning(f"{self.log_prefix} {result}")
+                    return False, result
+
                 if attempt < max_retries:
                     logger.warning(f"{self.log_prefix} 第 {attempt + 1} 次API调用失败: {result}，将重试（剩余 {max_retries - attempt} 次）")
                     continue
