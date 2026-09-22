@@ -59,17 +59,39 @@ def list_models(plugin: "MaisArtPlugin") -> Dict[str, Dict[str, Any]]:
     return {item["id"]: item for item in items if item.get("id")}
 
 
+def resolve_txt2img_model(plugin: "MaisArtPlugin") -> str:
+    """解析默认文生图模型 ID（留空时回退到旧 default_model，再回退到 model1）"""
+    basic = plugin.config.basic
+    model_id = (basic.default_txt2img_model or "").strip()
+    if model_id:
+        return model_id
+    # 旧版配置只有 default_model，视为文生图模型
+    legacy = (basic.default_model or "").strip()
+    if legacy:
+        return legacy
+    return "model1"
+
+
+def resolve_img2img_model(plugin: "MaisArtPlugin") -> str:
+    """解析默认图生图模型 ID（留空时回退到文生图模型）"""
+    basic = plugin.config.basic
+    model_id = (basic.default_img2img_model or "").strip()
+    if model_id:
+        return model_id
+    return resolve_txt2img_model(plugin)
+
+
 def get_model_config(plugin: "MaisArtPlugin", model_id: Optional[str] = None) -> Dict[str, Any]:
     """按 id 查找模型配置；查不到时回退到默认模型；都没有返回 {}"""
     if not model_id:
-        model_id = plugin.config.basic.default_model
+        model_id = resolve_txt2img_model(plugin)
 
     items = list_models(plugin)
     cfg = items.get(model_id)
     if cfg:
         return cfg
 
-    default_id = plugin.config.basic.default_model
+    default_id = resolve_txt2img_model(plugin)
     if default_id and default_id != model_id:
         fallback = items.get(default_id)
         if fallback:

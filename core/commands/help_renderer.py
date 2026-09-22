@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from ..config import get_model_config
+from ..config import get_model_config, resolve_img2img_model, resolve_txt2img_model
 from ..state import runtime_state
 from .registry import CommandResult
 
@@ -56,12 +56,16 @@ async def render_current_config(dctx: "DispatcherContext") -> CommandResult:
     chat_id = dctx.chat_id
     prefix = dctx.prefix
 
-    global_action_model = plugin.config.basic.default_model
+    global_txt2img = resolve_txt2img_model(plugin)
+    global_img2img = resolve_img2img_model(plugin)
     global_command_model = plugin.config.basic.pic_command_model
     global_plugin_enabled = plugin.config.plugin.enabled
 
     plugin_enabled = runtime_state.is_plugin_enabled(chat_id, global_plugin_enabled)
-    action_model = runtime_state.get_action_default_model(chat_id, global_action_model)
+    # 聊天流级覆盖优先；未覆盖时展示按模式拆分的全局默认
+    action_override = runtime_state.get_action_default_model(chat_id, "")
+    txt2img_model = action_override or global_txt2img
+    img2img_model = action_override or global_img2img
     command_model = runtime_state.get_command_default_model(chat_id, global_command_model)
     disabled_models = runtime_state.get_disabled_models(chat_id)
     recall_disabled = runtime_state.get_recall_disabled_models(chat_id)
@@ -71,7 +75,8 @@ async def render_current_config(dctx: "DispatcherContext") -> CommandResult:
     global_style = plugin.config.selfie.default_style
     selfie_style = runtime_state.get_selfie_style(chat_id, global_style)
 
-    action_cfg = get_model_config(plugin, action_model)
+    txt2img_cfg = get_model_config(plugin, txt2img_model)
+    img2img_cfg = get_model_config(plugin, img2img_model)
     command_cfg = get_model_config(plugin, command_model)
 
     def _name(cfg):
@@ -83,8 +88,16 @@ async def render_current_config(dctx: "DispatcherContext") -> CommandResult:
         f"⚙️ 当前聊天流配置 (ID: {chat_id[:8]}...)：\n",
         f"🔌 插件状态: {'✅ 启用' if plugin_enabled else '❌ 禁用'}",
         f"⌨️ 命令前缀: {prefix}",
-        f"🎯 默认模型: {action_model}",
-        f"   • 名称: {_name(action_cfg)}\n",
+    ]
+    if action_override:
+        lines.append(f"🎯 默认模型(聊天流覆盖): {action_override}")
+        lines.append(f"   • 名称: {_name(txt2img_cfg)}\n")
+    else:
+        lines.append(f"🎯 文生图默认: {txt2img_model}")
+        lines.append(f"   • 名称: {_name(txt2img_cfg)}")
+        lines.append(f"🖼️ 图生图默认: {img2img_model}")
+        lines.append(f"   • 名称: {_name(img2img_cfg)}\n")
+    lines += [
         f"🔧 {prefix}命令模型: {command_model}",
         f"   • 名称: {_name(command_cfg)}",
         f"\n📸 自拍日程增强: {'✅ 启用' if selfie_schedule else '❌ 禁用'}",

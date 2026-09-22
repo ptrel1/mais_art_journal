@@ -64,14 +64,33 @@ class BasicSection(PluginConfigBase):
     )
 
     # ---- 图片生成默认 ----
+    # 旧 default_model 保留为兼容字段：旧 config.toml 里只有它，解析层会把它的值
+    # 作为文生图默认的回退来源，用户改用新字段后它不再参与路由。
     default_model: str = Field(
-        default="model1",
-        description="默认使用的模型ID，用于智能图片生成。支持文生图和图生图自动识别",
+        default="",
+        description="[已废弃] 旧版默认模型，留空即可。值会自动作为「默认文生图模型」的回退",
+        json_schema_extra={"label": "默认模型(已废弃)", "order": 9, "hidden": True},
+    )
+    default_txt2img_model: str = Field(
+        default="",
+        description="默认文生图模型ID。纯文生图（用户未提供参考图、非自拍）时使用。"
+        "留空时依次回退到旧 default_model、内置 model1",
         json_schema_extra={
-            "label": "默认模型",
+            "label": "默认文生图模型",
             "hint": "对应模型管理中的模型ID（如model1、model2）",
             "placeholder": "model1",
             "order": 10,
+        },
+    )
+    default_img2img_model: str = Field(
+        default="",
+        description="默认图生图模型ID。图生图（用户在消息中附图或引用图片）时使用，"
+        "自拍在有独立自拍模型时优先用自拍模型。留空则回退到「默认文生图模型」",
+        json_schema_extra={
+            "label": "默认图生图模型",
+            "hint": "留空=与文生图模型相同；图生图/带参考图自拍时使用",
+            "placeholder": "model2",
+            "order": 11,
         },
     )
 
@@ -275,14 +294,29 @@ class SelfieSection(PluginConfigBase):
         },
     )
     selfie_model: str = Field(
-        default="model1",
-        description="自动自拍使用的模型 ID",
+        default="",
+        description="自动自拍使用的模型 ID。留空时依次回退到「普通自拍模型」、"
+        "「默认图生图模型」、内置 model1。自动自拍必然携带参考图，应填图生图模型",
         json_schema_extra={
             "label": "自动自拍模型",
-            "placeholder": "model1",
+            "placeholder": "model2",
             "depends_on": "selfie.auto_enabled",
             "depends_value": True,
             "order": 22,
+        },
+    )
+    llm_selfie_model: str = Field(
+        default="",
+        description="普通自拍（聊天中用自然语言要自拍）使用的模型 ID。"
+        "自拍必然携带参考图、走图生图，通常应填图生图模型。留空则依次回退到"
+        "「默认图生图模型」→「默认文生图模型」",
+        json_schema_extra={
+            "label": "普通自拍模型",
+            "hint": "留空=使用默认图生图模型；自拍走图生图，建议填图生图模型",
+            "placeholder": "model2",
+            "depends_on": "selfie.enabled",
+            "depends_value": True,
+            "order": 8,
         },
     )
     quiet_hours_start: str = Field(

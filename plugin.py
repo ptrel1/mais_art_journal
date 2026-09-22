@@ -64,7 +64,7 @@ class MaisArtPlugin(MaiBotPlugin):
         },
         "model_id": {
             "type": "string",
-            "description": "可选：要使用的模型 ID（如 model1、model2 等）。不填则使用 default_model 配置。",
+            "description": "可选：要使用的模型 ID（如 model1、model2 等）。不填则由插件按场景自动选择（文生图/图生图/自拍各有独立默认模型）。",
         },
         "strength": {
             "type": "number",
@@ -228,7 +228,7 @@ class MaisArtPlugin(MaiBotPlugin):
 
         Args:
             prompt: 图片描述（必填，中英文均可；启用 prompt_optimizer 时会自动优化为英文 SD 提示词）
-            model_id: 模型 ID（如 model1、model2），留空使用 default_model
+            model_id: 模型 ID（如 model1、model2），留空时按文生图/图生图场景自动选择默认模型
             size: 图片尺寸，如 "1024x1024"；留空由 LLM 自选或用模型默认
             strength: 图生图强度 0.1-1.0；仅 input_image_base64 非空时生效，默认 0.7
             input_image_base64: 图生图输入图（纯 base64 字符串，不含 data:image/... 前缀）
@@ -339,13 +339,19 @@ class MaisArtPlugin(MaiBotPlugin):
         Returns:
             Dict[str, Any]: {
                 "success": bool,
-                "default_model": str,           # basic.default_model
+                "default_model": str,           # basic.default_txt2img_model（兼容旧调用方）
+                "default_txt2img_model": str,   # basic.default_txt2img_model
+                "default_img2img_model": str,   # basic.default_img2img_model（留空时与文生图相同）
                 "models": list[dict],           # [{"id", "name", "format", "model", "support_img2img"}]
             }
         """
         del kwargs
         try:
-            from .core.config import list_models
+            from .core.config import (
+                list_models,
+                resolve_img2img_model,
+                resolve_txt2img_model,
+            )
             items = list_models(self)
             models = [
                 {
@@ -360,7 +366,9 @@ class MaisArtPlugin(MaiBotPlugin):
             ]
             return {
                 "success": True,
-                "default_model": self.config.basic.default_model,
+                "default_model": resolve_txt2img_model(self),
+                "default_txt2img_model": resolve_txt2img_model(self),
+                "default_img2img_model": resolve_img2img_model(self),
                 "models": models,
             }
         except Exception as exc:

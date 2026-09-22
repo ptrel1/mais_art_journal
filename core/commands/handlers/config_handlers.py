@@ -4,7 +4,13 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from ...config import get_model_config, list_models, model_exists
+from ...config import (
+    get_model_config,
+    list_models,
+    model_exists,
+    resolve_img2img_model,
+    resolve_txt2img_model,
+)
 from ...state import runtime_state
 from ..help_renderer import render_current_config
 from ..registry import CommandResult, subcommand
@@ -24,10 +30,11 @@ async def cmd_list(plugin: "MaisArtPlugin", dctx: "DispatcherContext", args: str
         await plugin.ctx.send.text("未找到任何模型配置", dctx.stream_id)
         return False, "无模型配置", True
 
-    global_default = plugin.config.basic.default_model
+    global_txt2img = resolve_txt2img_model(plugin)
+    global_img2img = resolve_img2img_model(plugin)
     global_command = plugin.config.basic.pic_command_model
 
-    action_default = runtime_state.get_action_default_model(dctx.chat_id, global_default)
+    runtime_override = runtime_state.get_action_default_model(dctx.chat_id, "")
     command_default = runtime_state.get_command_default_model(dctx.chat_id, global_command)
     disabled_models = runtime_state.get_disabled_models(dctx.chat_id)
     recall_disabled = runtime_state.get_recall_disabled_models(dctx.chat_id)
@@ -40,17 +47,23 @@ async def cmd_list(plugin: "MaisArtPlugin", dctx: "DispatcherContext", args: str
 
         model_name = cfg.get("name", cfg.get("model", "未知"))
         support_img2img = cfg.get("support_img2img", True)
-        default_mark = " ✅" if model_id == action_default else ""
+        # 没有运行时覆盖时，✅ 标记同时落在文生图/图生图默认模型上
+        txt_mark = " ✅" if not runtime_override and model_id == global_txt2img else ""
+        img_mark = " 🖼️" if not runtime_override and model_id == global_img2img else ""
         command_mark = " 🔧" if model_id == command_default else ""
-        img2img_mark = " 🖼️" if support_img2img else " 📝"
+        img2img_mark = " 🎨" if support_img2img else " 📝"
         disabled_mark = " ❌" if is_disabled else ""
         recall_mark = " 🔕" if model_id in recall_disabled else ""
 
         lines.append(
-            f"• {model_id}{default_mark}{command_mark}{img2img_mark}{disabled_mark}{recall_mark}\n"
+            f"• {model_id}{txt_mark}{img_mark}{command_mark}{img2img_mark}{disabled_mark}{recall_mark}\n"
             f"  模型: {model_name}\n"
         )
-    lines.append(f"\n📖 图例：✅默认 🔧{dctx.prefix}命令 🖼️图生图 📝仅文生图")
+    if runtime_override:
+        lines.append(f"\n⌨️ 当前聊天流已覆盖默认模型：{runtime_override}")
+    lines.append(
+        f"\n📖 图例：✅文生图默认 🖼️图生图默认 🔧{dctx.prefix}命令 🎨支持图生图 📝仅文生图"
+    )
     await plugin.ctx.send.text("\n".join(lines), dctx.stream_id)
     return True, "模型列表查询成功", True
 
@@ -109,12 +122,14 @@ async def cmd_default(plugin: "MaisArtPlugin", dctx: "DispatcherContext", args: 
 async def cmd_reset(plugin: "MaisArtPlugin", dctx: "DispatcherContext", args: str) -> CommandResult:
     """/dr reset — 重置当前聊天流的所有运行时配置"""
     runtime_state.reset_chat_state(dctx.chat_id)
-    global_action_model = plugin.config.basic.default_model
+    global_txt2img = resolve_txt2img_model(plugin)
+    global_img2img = resolve_img2img_model(plugin)
     global_command_model = plugin.config.basic.pic_command_model
 
     await plugin.ctx.send.text(
         f"✅ 当前聊天流配置已重置！\n\n"
-        f"🎯 默认模型: {global_action_model}\n"
+        f"🎯 文生图默认: {global_txt2img}\n"
+        f"🖼️ 图生图默认: {global_img2img}\n"
         f"🔧 {dctx.prefix}命令模型: {global_command_model}\n"
         f"📋 所有模型已启用\n"
         f"🔔 所有撤回已启用\n\n"

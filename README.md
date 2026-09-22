@@ -41,7 +41,7 @@
 | `/dr list` | 列出所有模型 |
 | `/dr config` | 显示当前聊天流配置 |
 | `/dr set <模型ID>` | 设置 /dr 命令使用的模型 |
-| `/dr default <模型ID>` | 设置智能生图 Tool 默认模型 |
+| `/dr default <模型ID>` | 设置智能生图 Tool 默认模型（当前聊天流，覆盖上述自动选择） |
 | `/dr model on\|off <模型ID>` | 开关指定模型 |
 | `/dr recall on\|off <模型ID>` | 开关指定模型的撤回 |
 | `/dr on` / `/dr off` | 开关插件（当前聊天流） |
@@ -50,6 +50,22 @@
 | `/dr reset` | 重置当前聊天流的所有运行时配置 |
 
 > 运行时配置（模型切换、开关等）仅保存在内存中，重启后恢复为 config.toml 的全局设置。
+
+### 文生图 / 图生图 / 自拍的模型自动选择
+
+当 LLM 调用智能生图 Tool 且**未显式指定 `model_id`** 时，插件按场景自动选模型，回退顺序如下：
+
+| 优先级 | 场景 | 使用的模型 |
+|--------|------|-----------|
+| 1 | 自动自拍（后台定时任务） | `selfie.selfie_model` |
+| 2 | 普通自拍（聊天里要自拍） | `selfie.llm_selfie_model`（留空→下一行） |
+| 3 | 图生图（消息附图 / 引用图片 / 自拍参考图） | `basic.default_img2img_model`（留空→下一行） |
+| 4 | 兜底（纯文生图） | `basic.default_txt2img_model` |
+
+**典型用法**：文生图模型和图生图模型分开填——`default_txt2img_model` 填文生图专用模型，`default_img2img_model` 填图生图专用模型。这样自然语言画图、改图、自拍三条路自动走对模型，LLM 完全无感。普通自拍必然携带 `reference_image_path` 指定的参考图，所以即使 `llm_selfie_model` 留空也会落到第 3 行的图生图模型，不会错误地用文生图模型画自拍。
+
+> 旧配置里的 `default_model` 会在启动时自动迁移到 `default_txt2img_model`，无需手工改配置。
+> 若某模型实际不支持图生图（模型配置里 `support_img2img = false`），即使被选为图生图默认也会自动降级为文生图，不会报错。
 
 ### 自动自拍
 
@@ -121,7 +137,8 @@ config_version = "4.2.0"          # 主程序版本识别，请勿改
 
 [basic]
 command_prefix = "/dr"            # 命令前缀，可改 /dv、/draw 等，必须以 / 开头
-default_model = "model1"          # 智能生图 Tool 默认使用的模型 ID
+default_txt2img_model = "model1"  # 默认文生图模型 ID（纯文生图时使用）
+default_img2img_model = "model2"  # 默认图生图模型 ID（消息附图/引用图片时使用，留空=与文生图相同）
 enable_unified_generation = true  # 启用智能生图 Tool（draw_picture）
 enable_pic_command = true         # 启用 /dr 图片生成命令
 enable_pic_config = true          # 启用 /dr 配置管理命令
@@ -148,6 +165,7 @@ prompt_prefix = "blue hair, red eyes, 1girl"  # Bot 外观描述
 negative_prompt = ""              # 额外负面提示词（自动附加手部质量负面提示词）
 schedule_enabled = true           # 日程增强（需 autonomous_planning），可通过 /dr selfie on|off 按聊天流覆盖
 default_style = "standard"        # 默认风格: standard / mirror / photo，可通过 /dr selfie standard|mirror|photo 按聊天流覆盖
+llm_selfie_model = "model2"       # 普通自拍（聊天里要自拍）模型 ID；自拍必然带参考图走图生图，留空=用默认图生图模型
 
 # 以下 auto_ 前缀字段属于自动自拍
 auto_enabled = false              # 启用自动自拍（需 MaiTrace + autonomous_planning）
