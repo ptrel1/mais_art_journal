@@ -22,10 +22,10 @@
 </p>
 
 <p align="center">
-  <a href="docs/images/model-config.webp"><img src="docs/images/model-config.webp" width="820" alt="绘卷控制台模型服务页面"></a>
+  <a href="docs/images/control-console.webp"><img src="docs/images/control-console.webp" width="820" alt="绘卷控制台模型服务页面"></a>
 </p>
 
-<p align="center"><sub>模型服务按格式配置 · 默认模型按名称选择 · 点击图片查看大图</sub></p>
+<p align="center"><sub>绘图与配置集中管理 · 点击图片查看大图</sub></p>
 
 支持 OpenAI 兼容服务、NovelAI、Gemini、豆包、百炼、ComfyUI 等接口，可配合 MaiTrace 自动自拍与主动分享。
 
