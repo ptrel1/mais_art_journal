@@ -1,0 +1,61 @@
+{
+  "schema_version": 2,
+  "required_capabilities": ["custom_pages", "image_upload"],
+  "pages": [
+    {
+      "id": "models",
+      "title": "绘卷控制台",
+      "description": "管理绘图设置，直接绘图并预览生成结果",
+      "placement": "sidebar",
+      "icon": "settings",
+      "mode": "custom",
+      "entry": "webui/models.html",
+      "layout": "viewport",
+      "queries": {
+        "load": {"api": "model_config_load"},
+        "appearance": {"api": "appearance_load"},
+        "trial_status": {"api": "trial_status", "parameters": {"job_id": {"type": "string", "max_length": 32}}},
+        "trial_result": {"api": "trial_result", "parameters": {
+          "job_id": {"type": "string", "required": true, "max_length": 32},
+          "index": {"type": "integer", "required": true, "minimum": 0, "maximum": 200}
+        }}
+      },
+      "uploads": {
+        "background": {"action": "upload_background", "image_max_edge": 1920},
+        "reference": {"action": "upload_reference", "image_max_edge": 2048}
+      },
+      "actions": {
+        "trial_start": {"api": "trial_start", "parameters": {
+          "payload": {"type": "string", "required": true, "max_length": 16384},
+          "request_id": {"type": "string", "required": true, "max_length": 32}
+        }},
+        "trial_cancel": {"api": "trial_cancel", "parameters": {"job_id": {"type": "string", "required": true, "max_length": 32}}},
+        "trial_remove_reference": {"api": "trial_remove_reference", "parameters": {"reference_id": {"type": "string", "required": true, "max_length": 32}}},
+        "upload_reference": {"api": "trial_upload", "parameters": {
+          "upload_id": {"type": "string", "required": true, "max_length": 64},
+          "filename": {"type": "string", "max_length": 160}
+        }},
+        "save_appearance": {
+          "api": "appearance_save",
+          "parameters": {"payload": {"type": "string", "required": true, "max_length": 2000}}
+        },
+        "reset_appearance": {"api": "appearance_reset"},
+        "remove_background": {"api": "appearance_remove_image"},
+        "upload_background": {
+          "api": "appearance_upload",
+          "parameters": {
+            "upload_id": {"type": "string", "required": true, "max_length": 64},
+            "filename": {"type": "string", "max_length": 160}
+          }
+        },
+        "save": {
+          "api": "model_config_save",
+          "parameters": {
+            "payload": {"type": "string", "required": true, "max_length": 60000},
+            "revision": {"type": "string", "required": true, "max_length": 64}
+          }
+        }
+      }
+    }
+  ]
+}

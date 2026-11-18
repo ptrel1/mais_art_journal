@@ -75,7 +75,7 @@ class CommandDispatcher:
             chat_id=chat_id,
             message=message,
             is_admin=self._is_admin(user_id),
-            log_prefix=self._log_prefix(group_name, user_nickname),
+            log_prefix=self._log_prefix(group_name, user_nickname, group_id=group_id),
             prefix=self._resolved_prefix(),
             user_id=user_id,
             group_id=group_id,
@@ -141,9 +141,10 @@ class CommandDispatcher:
             return False
         return str(user_id) in admins
 
-    def _log_prefix(self, group_name: str, user_nickname: str) -> str:
-        if group_name:
-            return f"[{group_name}]"
+    def _log_prefix(self, group_name: str, user_nickname: str, *, group_id: str = "") -> str:
+        # 官方 QQ 消息可能只有群 ID，不能因缺少群名而显示为私聊。
+        if group_id or group_name:
+            return f"[{group_name or '当前群聊'}]"
         if user_nickname:
             return f"[{user_nickname} 的 私聊]"
         return f"[MaisArt {self._resolved_prefix()}]"

@@ -29,6 +29,7 @@ import re
 from .core.config.models import MaisArtConfig
 from .core.quota import QuotaStore
 from .core.state import ProactiveStateStore, RuntimeStateManager
+from .core.webui.trial import TrialManager
 
 if TYPE_CHECKING:
     from .core.commands.dispatcher import CommandDispatcher
@@ -73,6 +74,34 @@ class MaisArtPlugin(MaiBotPlugin):
 
     config_model = MaisArtConfig
     config_reload_subscriptions = ()  # 不订阅 bot/model 全局广播
+
+    @classmethod
+    def build_config_schema(cls, **kwargs: Any) -> Dict[str, Any]:
+        """按使用流程展示配置，保存时仍使用原有字段和配置路径。"""
+        from .core.config.ui_schema import build_config_ui
+        return build_config_ui(super().build_config_schema(**kwargs))
+
+    def get_webui_config_schema(self, **kwargs: Any) -> Dict[str, Any]:
+        """在模型编号输入框旁列出已保存的编号与名称，使用宿主现有提示文字。"""
+        schema = super().get_webui_config_schema(**kwargs)
+        config = self.get_plugin_config_data()
+        enabled = config.get("plugin", {}).get("enabled", False)
+        schema["sections"]["models"]["description"] = (
+            "此处是完整表单，始终显示全部字段。按格式切换参数请打开侧栏「绘卷控制台」。"
+            if enabled else
+            "当前插件已停用，绘卷控制台尚未加载。启用插件并保存后，可打开侧栏「绘卷控制台」按格式切换参数。此处始终显示完整表单。"
+        )
+        models = config.get("models", {}).get("items", []) if config else schema["sections"]["models"]["fields"]["items"]["default"]
+        model_hint = "；".join(f"{model['id']}：{model['name']}" for model in models)
+        selector_paths = {
+            "basic.default_txt2img_model", "basic.default_img2img_model", "basic.pic_command_model",
+            "selfie.llm_selfie_model", "selfie.selfie_model", "group_image.model_id",
+        }
+        for section in schema["sections"].values():
+            for name, field in section["fields"].items():
+                if f"{section['name']}.{name}" in selector_paths and model_hint:
+                    field["hint"] += f" 已保存的服务编号：{model_hint}。"
+        return schema
 
     # 智能生图 Tool 描述（2026-08-23 精简：原 1058 字符过长，导致 MaiBot deferred-tools
     # system-reminder 拼成一行后格式异常、挤占上下文。见 GitHub issue#35。仅精简文本，
@@ -141,6 +170,7 @@ class MaisArtPlugin(MaiBotPlugin):
         self._recall_tasks: Set[asyncio.Task] = set()
         self._closing = False
         self._cleanup_task: Optional[asyncio.Task] = None
+        self._trial_manager = TrialManager(self)
 
     # ── 公共属性 ──────────────────────────────────
 
@@ -176,6 +206,7 @@ class MaisArtPlugin(MaiBotPlugin):
 
         self._closing = False
         self._cleanup_task = None
+        self._trial_manager = TrialManager(self)
         try:
             # 会话覆盖与额度均由插件实例持有；入口和后台任务必须在加载完成后启动。
             data_dir = self.ctx.paths.data_dir
@@ -231,6 +262,7 @@ class MaisArtPlugin(MaiBotPlugin):
     async def _finish_cleanup(self) -> None:
         """即使某个后台任务停止失败，也关闭其他任务，并在请求结算之后关库。"""
         try:
+            await self._trial_manager.close()
             # 热更新也在 active 中：必须等它结束，再最终停止后台，防止停完又被重启。
             # 此处在独立且被 shield 的清理任务内，不会被宿主重复取消打断。
             active = [task for task in self._active_operations if not task.done()]
@@ -291,7 +323,119 @@ class MaisArtPlugin(MaiBotPlugin):
                     await self._auto_selfie_task.stop()
                 raise
 
-    # ── Tool: 智能生图 ──────────────────────────
+    # ── WebUI: 配置与绘图 ──────────────────────────
+
+    @API("trial_start", description="启动控制台绘图", version="1")
+    @_tracked_operation
+    async def trial_start(self, payload: str, request_id: str) -> Dict[str, Any]:
+        return self._trial_manager.start(payload, request_id)
+
+    @API("trial_status", description="查询控制台绘图状态", version="1")
+    @_tracked_operation
+    async def trial_status(self, job_id: str = "") -> Dict[str, Any]:
+        return self._trial_manager.status(job_id)
+
+    @API("trial_result", description="读取控制台绘图图片分片", version="1")
+    @_tracked_operation
+    async def trial_result(self, job_id: str, index: int) -> Dict[str, Any]:
+        return self._trial_manager.chunk(job_id, index)
+
+    @API("trial_cancel", description="停止控制台绘图等待", version="1")
+    @_tracked_operation
+    async def trial_cancel(self, job_id: str) -> Dict[str, Any]:
+        return await self._trial_manager.cancel(job_id)
+
+    @API("trial_remove_reference", description="移除绘图参考图", version="1")
+    @_tracked_operation
+    async def trial_remove_reference(self, reference_id: str) -> Dict[str, Any]:
+        return self._trial_manager.remove_reference(reference_id)
+
+    @API("trial_upload", description="上传绘图参考图", version="1")
+    @_tracked_operation
+    async def trial_upload(self, upload_id: str, filename: str = "") -> Dict[str, Any]:
+        del filename
+        source = None
+        try:
+            claimed = await self.ctx.call_capability("webui.claim_upload", upload_id=upload_id)
+            candidate = Path(claimed["path"]).resolve()
+            if not candidate.is_relative_to((self.ctx.paths.data_dir / "uploads").resolve()):
+                raise ValueError("绘图上传文件路径不在插件上传目录内")
+            source = candidate
+            return await self._trial_manager.upload(source)
+        except Exception:
+            logger.exception("绘图参考图上传失败")
+            return {"success": False, "error": "参考图无法读取，请上传不超过 20 MB 的 JPG、PNG 或 WebP 图片。"}
+        finally:
+            if source is not None:
+                try:
+                    await asyncio.to_thread(source.unlink, missing_ok=True)
+                except OSError:
+                    logger.warning("绘图上传临时文件未能清理", exc_info=True)
+
+    @API("model_config_load", description="读取绘卷控制台配置数据", version="1")
+    async def model_config_load(self) -> Dict[str, Any]:
+        from .core.config.model_editor import load_editor
+        return await asyncio.to_thread(load_editor, Path(self.plugin_dir) / "config.toml", self.build_config_schema())
+
+    @API(
+        "model_config_save", description="保存绘卷控制台配置数据", version="1",
+        parameters={
+            "payload": {"type": "string", "description": "模型列表、默认模型和控制台设置 JSON", "required": True},
+            "revision": {"type": "string", "description": "读取时的配置版本摘要", "required": True},
+        },
+    )
+    async def model_config_save(self, payload: str, revision: str) -> Dict[str, Any]:
+        from .core.config.model_editor import save_editor
+        return await asyncio.to_thread(save_editor, Path(self.plugin_dir) / "config.toml", payload, revision)
+
+    async def _appearance_operation(self, operation: Callable[..., Dict[str, Any]], *args: Any, **kwargs: Any) -> Dict[str, Any]:
+        from .core.config.appearance import appearance_error
+        try:
+            return await asyncio.to_thread(operation, Path(self.plugin_dir) / "data" / "webui", *args, **kwargs)
+        except Exception as error:
+            logger.exception("绘卷页面外观操作失败")
+            return appearance_error(error)
+
+    @API("appearance_load", description="读取绘卷页面外观", version="1")
+    async def appearance_load(self) -> Dict[str, Any]:
+        from .core.config.appearance import load_appearance
+        return await self._appearance_operation(load_appearance)
+
+    @API("appearance_save", description="保存绘卷页面外观", version="1")
+    async def appearance_save(self, payload: str) -> Dict[str, Any]:
+        from .core.config.appearance import save_appearance
+        return await self._appearance_operation(save_appearance, payload)
+
+    @API("appearance_reset", description="恢复绘卷页面默认外观", version="1")
+    async def appearance_reset(self) -> Dict[str, Any]:
+        from .core.config.appearance import reset_appearance
+        return await self._appearance_operation(reset_appearance)
+
+    @API("appearance_remove_image", description="移除绘卷页面背景图片", version="1")
+    async def appearance_remove_image(self) -> Dict[str, Any]:
+        from .core.config.appearance import reset_appearance
+        return await self._appearance_operation(reset_appearance, remove_image=True)
+
+    @API("appearance_upload", description="上传绘卷页面背景图片", version="1")
+    async def appearance_upload(self, upload_id: str, filename: str = "") -> Dict[str, Any]:
+        from .core.config.appearance import appearance_error, upload_background
+        source = None
+        try:
+            claimed = await self.ctx.call_capability("webui.claim_upload", upload_id=upload_id)
+            candidate = Path(claimed["path"]).resolve()
+            if not candidate.is_relative_to((self.ctx.paths.data_dir / "uploads").resolve()):
+                raise ValueError("背景上传文件路径不在插件上传目录内")
+            source = candidate
+            return await self._appearance_operation(upload_background, source, filename)
+        except Exception as error:
+            logger.exception("绘卷背景图片上传失败")
+            return appearance_error(error)
+        finally:
+            if source is not None:
+                try:
+                    await asyncio.to_thread(source.unlink, missing_ok=True)
+                except OSError:
+                    logger.warning("背景图片已处理，但上传临时文件未能清理", exc_info=True)
 
     @Tool(
         "draw_picture",
@@ -546,8 +690,8 @@ class MaisArtPlugin(MaiBotPlugin):
 
     @Command(
         "dr",
-        timeout_ms=240000,
-        description="麦麦绘卷命令套件（生图 / 模型管理 / 风格管理 / 自拍开关 / 额度）。命令前缀可在「基础配置.命令前缀」修改后重启 MaiBot 生效",
+        timeout_ms=660000,
+        description="麦麦绘卷命令套件（生图 / 模型管理 / 风格管理 / 自拍开关 / 额度）。命令前缀保存后重新加载插件生效",
         pattern=r"^\s*(?:\[(?=[^\]]*(?:图片|image|表情|emoji))(?:[^\[\]]|\[[^\]]*\])*\]\s*)*(?:.*，说：\s*)?/dr(?:\s+(?P<rest>.+))?$",
     )
     @_tracked_operation
@@ -556,7 +700,7 @@ class MaisArtPlugin(MaiBotPlugin):
 
         装饰器里的 pattern 仅是默认占位（/dr）。get_components() 返回 host 之前会按
         当前 config.basic.command_prefix 重写 metadata.command_pattern 为精确前缀，
-        避免抢占其他插件的命令（如 /mute on）。修改前缀后**重启 MaiBot** 即生效。
+        避免抢占其他插件的命令（如 /mute on）。修改前缀后重新加载插件即生效。
         """
         if self._dispatcher is None:
             logger.error("CommandDispatcher 尚未初始化")

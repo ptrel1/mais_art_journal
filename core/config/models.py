@@ -30,13 +30,13 @@ class PluginSection(PluginConfigBase):
         json_schema_extra={"label": "插件名称", "disabled": True, "order": 1},
     )
     config_version: str = Field(
-        default="4.6.3",
+        default="4.6.5",
         description="插件配置版本，由插件自动维护，升级时用于备份和迁移已有配置",
         json_schema_extra={"label": "配置版本", "disabled": True, "order": 2},
     )
     enabled: bool = Field(
         default=False,
-        description="聊天生图与主动发图的全局开关；聊天流覆盖由 /dr on|off 管理。查询和管理命令仍可用，对外生图 API 由调用方调度",
+        description="宿主加载绘卷的总开关；关闭后停止插件组件和后台任务。单个聊天流的生图开关通过 /dr on|off 管理",
         json_schema_extra={"label": "启用插件", "order": 3},
     )
 
@@ -57,7 +57,7 @@ class BasicSection(PluginConfigBase):
     # ---- 命令前缀 ----
     command_prefix: str = Field(
         default="/dr",
-        description="命令前缀。所有子命令（list/config/set/styles/...）都以此前缀触发。修改后下一条命令即生效",
+        description="命令前缀。所有子命令（list/config/set/styles/...）都以此前缀触发。保存后需重新加载插件以更新宿主命令匹配规则",
         json_schema_extra={
             "label": "命令前缀",
             "hint": "默认 /dr，可改成 /draw、/pic 等。必须以 / 开头",
@@ -93,7 +93,7 @@ class BasicSection(PluginConfigBase):
     # ---- 组件启用 ----
     enable_unified_generation: bool = Field(
         default=True,
-        description="是否启用聊天智能生图 Tool；关闭后不影响后台主动图片和对外生图 API",
+        description="是否启用聊天智能生图 Tool；保存后重新加载插件以更新工具入口。关闭后不影响后台主动图片和对外生图 API",
         json_schema_extra={"label": "智能生图", "order": 20},
     )
     enable_pic_command: bool = Field(
@@ -157,7 +157,7 @@ class BasicSection(PluginConfigBase):
     # ---- 自动撤回 ----
     auto_recall_enabled: bool = Field(
         default=False,
-        description="聊天生图自动撤回总开关，还需模型 auto_recall_delay>0；支持现有 SnowLuma/NapCat 公开 API，QQ 官方消息跳过撤回，主动图和对外 API 不自动撤回",
+        description="聊天生图自动撤回总开关，还需模型 auto_recall_delay>0；SnowLuma/NapCat 调用公开 API，QQ 官方由麦麦调用已有撤回工具，受模型处理和 2 分钟时限影响；主动图和对外 API 不自动撤回",
         json_schema_extra={"label": "启用撤回", "order": 50},
     )
 
@@ -508,7 +508,7 @@ class ComfyUISection(PluginConfigBase):
         default=600,
         ge=30,
         le=3600,
-        description="ComfyUI /history 轮询上限（秒）。内部总时限至少 wait_seconds+60，仍受外层 Tool 660 秒、API 180 秒及主动任务周期超时限制；proxy.timeout 不控制轮询",
+        description="ComfyUI /history 轮询上限（秒）。内部总时限至少 wait_seconds+60，仍受外层 Tool/命令/API 的 660 秒和主动任务周期超时限制；proxy.timeout 不控制轮询",
         json_schema_extra={"label": "出图等待上限（秒）", "order": 2},
     )
 
@@ -532,7 +532,7 @@ class ProxySection(PluginConfigBase):
         description="代理服务器地址",
         json_schema_extra={
             "label": "代理地址",
-            "hint": "支持 HTTP / HTTPS / SOCKS5",
+            "hint": "使用 HTTP 或 HTTPS 代理地址；OpenAI/OpenAI-Chat 暂不支持 SOCKS5 代理",
             "placeholder": "http://127.0.0.1:7890",
             "depends_on": "proxy.enabled",
             "depends_value": True,
@@ -613,7 +613,7 @@ class ModelConfig(PluginConfigBase):
         },
     )
     name: str = Field(
-        default="魔搭潦草模型",
+        default="我的绘图服务",
         description="模型显示名称",
         json_schema_extra={"label": "模型名称", "group": "connection", "order": 1},
     )
@@ -628,12 +628,13 @@ class ModelConfig(PluginConfigBase):
         },
     )
     api_key: str = Field(
-        default="Bearer xxxxxxxxxxxxxxxxxxxxxx",
-        description="图片服务密钥，可填原始 token 或 Bearer token；ComfyUI 可留空，不与 MaiBot 辅助 LLM 密钥共用",
+        default="",
+        description="图片服务密钥；openai/openai-chat 的裸 token 自动补 Bearer，已有认证方案（如 Bearer/Token）保留；"
+        "其他云后端支持原始 token 或 Bearer token，ComfyUI 可留空；不与 MaiBot 辅助 LLM 密钥共用",
         json_schema_extra={
             "label": "API密钥",
             "input_type": "password",
-            "placeholder": "Bearer sk-xxx",
+            "placeholder": "sk-xxx 或 Bearer sk-xxx",
             "group": "connection",
             "order": 3,
         },
@@ -698,7 +699,7 @@ class ModelConfig(PluginConfigBase):
         json_schema_extra={"label": "水印", "group": "params", "order": 11},
     )
     custom_prompt_add: str = Field(
-        default=", Nordic picture book art style, minimalist flat design, liaocao",
+        default="",
         description="追加到所有该模型图片请求的正面描述/风格词，普通图和自拍共用；直接拼接，建议带逗号或空格，与自拍固定形象配置不同",
         json_schema_extra={
             "label": "正面增强词",
@@ -743,7 +744,7 @@ class ModelConfig(PluginConfigBase):
         default=0,
         ge=0,
         le=120,
-        description="自动撤回延时（秒）。大于 0 启用，0 不撤回。需先在「基础配置」中开启撤回总开关",
+        description="自动撤回延时（秒）。大于 0 启用，0 不撤回。需先开启撤回总开关；QQ 官方需小于 120 秒，并为麦麦处理任务预留时间",
         json_schema_extra={"label": "撤回延时", "group": "prompts", "order": 16},
     )
     cfg: float = Field(

@@ -1,5 +1,7 @@
-# 忽略所有 .log 文件
+# 忽略日志文件与目录
 *.log
+*.log.*
+logs/
 
 # 忽略特定目录
 old/
@@ -34,6 +36,7 @@ test_*
 .pytest_cache/
 .pytest_tmp_*/
 .venv/
+.artifacts/
 
 # 本地聊天设置与额度账本，不进入插件源码仓库。
 data/

@@ -1,0 +1,803 @@
+<style>
+  :root { font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; }
+  body { margin: 0 !important; background: transparent !important; }
+  * { box-sizing: border-box; }
+  #journal-page [hidden] { display: none !important; }
+  #journal-page {
+    --aj-text: #f0ece9; --aj-muted: #afa7a4; --aj-accent: #dfb391; --aj-accent-ink: #302319;
+    --aj-card-rgb: 34, 34, 41; --aj-rail-rgb: 24, 24, 30; --aj-input-rgb: 22, 24, 30;
+    --aj-border: rgba(255, 255, 255, .10); --aj-card-opacity: .88; --aj-input-opacity: .65;
+    --aj-overlay: .45; --aj-blur: 0px; --aj-shadow: 0 18px 55px rgba(0, 0, 0, .15);
+    position: relative; isolation: isolate; display: flex; width: 100%; height: var(--maibot-viewport-height, 100dvh);
+    min-height: 420px; overflow: hidden; color: var(--aj-text); color-scheme: dark; background: #1d1e25;
+  }
+  #journal-page[data-theme=light] {
+    --aj-text: #333132; --aj-muted: #787074; --aj-accent: #946647; --aj-accent-ink: #fff9f3;
+    --aj-card-rgb: 250, 247, 243; --aj-rail-rgb: 245, 239, 233; --aj-input-rgb: 255, 252, 248;
+    --aj-border: rgba(74, 50, 42, .12); --aj-shadow: 0 18px 55px rgba(58, 34, 36, .09); color-scheme: light;
+  }
+  #journal-page .canvas { position: absolute; z-index: -2; inset: 0; pointer-events: none; }
+  #journal-page .canvas-gradient { position: absolute; inset: 0; background: radial-gradient(ellipse at 86% 7%, #584250 0, transparent 52%), radial-gradient(ellipse at 14% 85%, #283e40 0, transparent 52%), #1e2029; }
+  #journal-page[data-preset=dawn] .canvas-gradient { background: radial-gradient(ellipse at 78% 12%, #b88370 0, transparent 55%), radial-gradient(ellipse at 0 85%, #62596d 0, transparent 60%), #453a46; }
+  #journal-page[data-preset=forest] .canvas-gradient { background: radial-gradient(ellipse at 86% 5%, #43635b 0, transparent 58%), radial-gradient(ellipse at 3% 100%, #727259 0, transparent 58%), #202d30; }
+  #journal-page #background-image { position: absolute; inset: -28px; background-size: cover; background-position: center; filter: blur(var(--aj-blur)); opacity: 0; transition: opacity .2s; }
+  #journal-page[data-background=image] #background-image { opacity: 1; }
+  #journal-page .canvas-shade { position: absolute; inset: 0; background: rgba(10, 13, 21, var(--aj-overlay)); opacity: 0; }
+  #journal-page[data-background=image] .canvas-shade { opacity: 1; }
+  #journal-page .canvas-grain { position: absolute; inset: 0; opacity: .035; background: repeating-linear-gradient(113deg, transparent 0 2px, #fff 3px, transparent 4px 7px); }
+  #journal-page button, #journal-page input, #journal-page select, #journal-page textarea { font: inherit; }
+  #journal-page button { cursor: pointer; border: 1px solid var(--aj-border); border-radius: 10px; padding: 9px 14px; color: var(--aj-text); background: rgba(var(--aj-card-rgb), .65); transition: border-color .15s, background .15s, transform .15s; }
+  #journal-page button:hover:not(:disabled) { border-color: var(--aj-accent); background: rgba(var(--aj-card-rgb), .95); }
+  #journal-page button:active:not(:disabled) { transform: translateY(1px); }
+  #journal-page button:disabled { cursor: default; opacity: .45; }
+  #journal-page button.primary { background: var(--aj-accent); color: var(--aj-accent-ink); border-color: transparent; font-weight: 650; }
+  #journal-page button.primary:hover:not(:disabled) { background: var(--aj-accent); filter: brightness(1.08); }
+  #journal-page button.primary.destructive { background: #b45e64; color: #fff; }
+  #journal-page button.danger { color: #d78f91; background: transparent; padding: 6px 11px; font-size: 12px; }
+  #journal-page button:focus-visible, #journal-page input:focus-visible, #journal-page select:focus-visible, #journal-page textarea:focus-visible, #journal-page summary:focus-visible { outline: 2px solid var(--aj-accent); outline-offset: 3px; }
+  #journal-page .rail { flex: 0 0 206px; display: flex; flex-direction: column; gap: 32px; padding: 28px 18px; background: rgba(var(--aj-rail-rgb), .68); border-right: 1px solid var(--aj-border); backdrop-filter: blur(20px); }
+  #journal-page .brand { display: flex; gap: 12px; align-items: center; padding: 0 6px; }
+  #journal-page .brand-mark { width: 40px; height: 44px; display: grid; place-items: center; border: 1px solid var(--aj-accent); border-radius: 13px 5px 13px 5px; color: var(--aj-accent); font-family: "STKaiti", "KaiTi", serif; font-size: 25px; }
+  #journal-page .brand strong { display: block; font-size: 16px; letter-spacing: .06em; }
+  #journal-page .brand small { display: block; margin-top: 6px; color: var(--aj-muted); font-size: 10px; letter-spacing: .12em; }
+  #journal-page .rail nav { display: grid; gap: 7px; }
+  #journal-page .rail button { text-align: left; padding: 12px; font-size: 13px; }
+  #journal-page .rail button.active { border-color: transparent; background: rgba(223, 179, 145, .12); color: var(--aj-accent); }
+  #journal-page .rail-footer { margin-top: auto; display: grid; gap: 10px; }
+  #journal-page .rail-caption { font-size: 11px; line-height: 1.8; color: var(--aj-muted); padding: 0 8px; margin: 0; }
+  #journal-page .workspace { flex: 1; min-width: 0; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--aj-border) transparent; }
+  #journal-page main { max-width: 1140px; margin: auto; padding: 32px 38px 48px; }
+  #journal-page h1 { margin: 8px 0 0; font-size: 30px; font-weight: 650; letter-spacing: -.03em; }
+  #journal-page h2 { margin: 0; font-size: 17px; font-weight: 600; }
+  #journal-page .eyebrow { color: var(--aj-accent); margin: 0; font-size: 11px; letter-spacing: .13em; }
+  #journal-page .muted, #journal-page .hint { color: var(--aj-muted); font-size: 13px; line-height: 1.7; }
+  #journal-page .toolbar, #journal-page .card-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; }
+  #journal-page .toolbar { margin-bottom: 14px; }
+  #journal-page .toolbar .muted { margin: 10px 0 0; }
+  #journal-page .actions { display: flex; gap: 8px; align-items: center; }
+  #journal-page .mobile-appearance { display: none; }
+  #journal-page .card { border: 1px solid var(--aj-border); border-radius: 18px; padding: 24px; margin: 20px 0; background: rgba(var(--aj-card-rgb), var(--aj-card-opacity)); box-shadow: var(--aj-shadow); backdrop-filter: blur(18px); }
+  #journal-page .card-header { padding-bottom: 19px; border-bottom: 1px solid var(--aj-border); }
+  #journal-page .model-heading { display: flex; gap: 12px; align-items: center; min-width: 0; }
+  #journal-page .model-number { color: var(--aj-accent); background: rgba(223, 179, 145, .08); border: 1px solid var(--aj-border); border-radius: 10px; padding: 8px; font: 12px ui-monospace, monospace; }
+  #journal-page .model-badge { margin-top: 5px; color: var(--aj-muted); font-size: 11px; }
+  #journal-page .section-heading { display: flex; align-items: center; gap: 9px; margin: 23px 0 0; color: var(--aj-muted); font-size: 12px; font-weight: 500; }
+  #journal-page .section-heading::before { content: ''; width: 3px; height: 12px; border-radius: 2px; background: var(--aj-accent); opacity: .7; }
+  #journal-page .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 17px 22px; padding: 16px 0 2px; }
+  #journal-page .field { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+  #journal-page .field label { color: var(--aj-text); font-size: 13px; font-weight: 500; }
+  #journal-page .field.wide { grid-column: 1 / -1; }
+  #journal-page input, #journal-page select, #journal-page textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--aj-border); border-radius: 9px; color: var(--aj-text); background: rgba(var(--aj-input-rgb), var(--aj-input-opacity)); }
+  #journal-page input::placeholder, #journal-page textarea::placeholder { color: var(--aj-muted); opacity: .7; }
+  #journal-page textarea { min-height: 78px; resize: vertical; font-size: 13px; line-height: 1.6; }
+  #journal-page input[type=checkbox] { appearance: none; width: 38px; height: 22px; border-radius: 20px; padding: 0; position: relative; margin: 5px 0; cursor: pointer; }
+  #journal-page input[type=checkbox]::before { content: ''; position: absolute; top: 3px; left: 3px; height: 14px; width: 14px; border-radius: 50%; background: var(--aj-muted); transition: transform .15s; }
+  #journal-page input[type=checkbox]:checked { background: var(--aj-accent); border-color: var(--aj-accent); }
+  #journal-page input[type=checkbox]:checked::before { background: var(--aj-accent-ink); transform: translateX(16px); }
+  #journal-page .hint { margin: 0; font-size: 11px; }
+  #journal-page details { margin-top: 22px; border-top: 1px solid var(--aj-border); padding-top: 16px; }
+  #journal-page summary { cursor: pointer; font-size: 12px; color: var(--aj-muted); }
+  #journal-page #status { min-height: 28px; font-size: 12px; display: flex; gap: 8px; align-items: center; color: var(--aj-muted); margin: 14px 0 0; }
+  #journal-page #status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--aj-accent); }
+  #journal-page #status[data-tone=error] { color: #e7a0a4; }
+  #journal-page #status[data-tone=error]::before { background: #e7a0a4; }
+  #journal-page #status[data-tone=success]::before { background: #8cbea5; }
+  #journal-page .empty { padding: 38px; text-align: center; }
+  #journal-page #add { width: 100%; padding: 15px; border-style: dashed; background: rgba(var(--aj-card-rgb), .35); }
+  #journal-page .defaults-card { border-top: 2px solid rgba(223, 179, 145, .4); }
+  #journal-page .page-tabs { display: none; gap: 8px; overflow-x: auto; padding: 8px 0; }
+  #journal-page .page-tabs button { flex: 0 0 auto; font-size: 12px; }
+  #journal-page .page-tabs button.active { border-color: var(--aj-accent); color: var(--aj-accent); }
+  #journal-page .list-editor { grid-column: 1 / -1; }
+  #journal-page .list-row { border: 1px solid var(--aj-border); border-radius: 12px; padding: 16px; margin: 12px 0; }
+  #journal-page .list-row .card-header { padding-bottom: 10px; }
+  #journal-page .list-editor > .hint { margin: 8px 0; }
+  #journal-page details.card > summary { color: var(--aj-text); font-size: 16px; font-weight: 600; }
+  #journal-page .trial-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 22px; align-items: start; }
+  #journal-page .trial-layout .card { margin-top: 20px; }
+  #journal-page .trial-layout fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+  #journal-page .trial-preview { width: 100%; max-height: 640px; object-fit: contain; border-radius: 12px; cursor: zoom-in; background: rgba(var(--aj-input-rgb), .45); }
+  #journal-page #trial-reference-preview { width: 84px; height: 84px; object-fit: contain; border-radius: 8px; }
+  #journal-page #trial-status { min-height: 24px; font-size: 13px; line-height: 1.7; }
+  #journal-page #trial-status[data-error=true] { color: #e7a0a4; }
+  #journal-page #trial-image-dialog { width: min(1200px, calc(100% - 24px)); }
+  #journal-page #trial-large-image { display: block; width: 100%; max-height: calc(100dvh - 140px); object-fit: contain; }
+  #journal-page dialog { border: 1px solid var(--aj-border); border-radius: 20px; width: min(510px, calc(100% - 24px)); max-height: calc(100% - 28px); padding: 0; color: var(--aj-text); background: rgb(var(--aj-card-rgb)); box-shadow: 0 30px 100px rgba(0, 0, 0, .4); overflow: auto; }
+  #journal-page dialog::backdrop { background: rgba(8, 10, 18, .55); backdrop-filter: blur(5px); }
+  #journal-page .dialog-header, #journal-page .dialog-footer { padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  #journal-page .dialog-header { border-bottom: 1px solid var(--aj-border); }
+  #journal-page .dialog-content { padding: 18px 24px; display: grid; gap: 20px; }
+  #journal-page .dialog-footer { border-top: 1px solid var(--aj-border); }
+  #journal-page .dialog-header button { padding: 5px 10px; background: transparent; }
+  #journal-page .preset-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  #journal-page .preset-list button { padding: 7px; font-size: 11px; text-align: left; }
+  #journal-page .preset-list button[aria-pressed=true] { border-color: var(--aj-accent); }
+  #journal-page .swatch { display: block; height: 37px; border-radius: 5px; margin-bottom: 8px; background: linear-gradient(130deg, #2b4142, #564355); }
+  #journal-page [data-preset=dawn] .swatch { background: linear-gradient(130deg, #6a596c, #d3a08a); }
+  #journal-page [data-preset=forest] .swatch { background: linear-gradient(130deg, #243b3c, #8a8b63); }
+  #journal-page .upload-tile { display: flex; gap: 13px; align-items: center; padding: 12px; border: 1px dashed var(--aj-border); border-radius: 11px; }
+  #journal-page #background-preview { width: 94px; height: 63px; flex: 0 0 94px; border-radius: 7px; object-fit: cover; background: linear-gradient(130deg, #2b4142, #564355); }
+  #journal-page .upload-tile .muted { margin: 6px 0 0; font-size: 11px; }
+  #journal-page input[type=range] { accent-color: var(--aj-accent); padding: 0; border: 0; background: transparent; }
+  #journal-page .range-label { display: flex; justify-content: space-between; }
+  #journal-page output { color: var(--aj-accent); font-size: 12px; }
+  #journal-page #appearance-status { margin: 0; min-height: 18px; font-size: 12px; color: var(--aj-muted); }
+  #journal-page #appearance-status[data-error=true] { color: #e7a0a4; }
+  @media (max-width: 1000px) { #journal-page .rail { flex-basis: 178px; padding: 24px 12px; } #journal-page main { padding: 26px 24px 36px; } #journal-page .toolbar { align-items: flex-start; } }
+  @media (max-width: 1000px) { #journal-page .trial-layout { grid-template-columns: 1fr; } }
+  @media (max-width: 720px) { #journal-page .rail { display: none; } #journal-page .page-tabs { display: flex; } #journal-page .mobile-appearance { display: inline-block; } #journal-page main { padding: 22px 14px 30px; } #journal-page h1 { font-size: 25px; } #journal-page .card { padding: 18px; } #journal-page .actions { flex-wrap: wrap; } }
+  @media (max-width: 520px) { #journal-page .grid { grid-template-columns: 1fr; } #journal-page .field.wide { grid-column: auto; } #journal-page .toolbar { gap: 18px; } #journal-page .dialog-content { padding: 16px 18px; } }
+  @media (prefers-reduced-motion: reduce) { #journal-page * { transition: none !important; scroll-behavior: auto !important; } }
+</style>
+<div id="journal-page" data-theme="dark" data-preset="ink" data-background="gradient">
+  <div class="canvas" aria-hidden="true"><div class="canvas-gradient"></div><div id="background-image"></div><div class="canvas-shade"></div><div class="canvas-grain"></div></div>
+  <aside class="rail">
+    <div class="brand"><span class="brand-mark">绘</span><div><strong>麦麦绘卷</strong><small>你的绘图工作台</small></div></div>
+    <nav id="page-nav" aria-label="页面导航"><button data-panel="trial" type="button" class="active">绘图</button><button data-panel="common" type="button">常用设置</button><button id="nav-models" data-panel="models" type="button">模型服务 <span id="model-count"></span></button></nav>
+    <div class="rail-footer"><button id="appearance-open" type="button">✦ 背景与外观</button><p id="background-caption" class="rail-caption">墨色渐变 · 深色</p></div>
+  </aside>
+  <div class="workspace" id="workspace"><main>
+  <header class="toolbar">
+    <div><p class="eyebrow">绘卷控制台</p><h1 id="page-title">绘图</h1><p id="page-description" class="muted">选择模型、填写描述，直接预览文生图、图生图和角色自拍。</p></div>
+    <div class="actions"><button id="appearance-mobile" type="button" class="mobile-appearance">外观</button><button id="reload" type="button">重新加载</button><button id="save" type="button" class="primary" disabled>保存配置</button></div>
+  </header>
+  <nav id="mobile-nav" class="page-tabs" aria-label="配置分区"></nav>
+  <p id="status" role="status" aria-live="polite">正在加载配置…</p>
+  <section data-content-panel="trial">
+    <p class="hint">绘图使用已保存的配置，每次重新生成。会调用绘图服务并消耗服务商额度。</p>
+    <div class="trial-layout">
+      <section class="card"><h2>画一张看看</h2>
+        <fieldset id="trial-inputs" disabled><div class="grid">
+          <div class="field wide"><label for="trial-model">绘图模型</label><select id="trial-model"></select></div>
+          <div class="field wide"><label for="trial-prompt">想画什么</label><textarea id="trial-prompt" maxlength="2000" placeholder="例如：雨后的街角，一只撑着伞的小猫" rows="5" required></textarea></div>
+          <div class="field"><label for="trial-size">图片尺寸</label><input id="trial-size" type="text" placeholder="留空自动选择，例如 1024x1024" maxlength="30" pattern="[1-9][0-9]{1,4}x[1-9][0-9]{1,4}"><p class="hint">模型启用固定尺寸时，按模型配置生成。</p></div>
+          <div class="field"><label for="trial-strength">图生图强度</label><input id="trial-strength" type="number" min="0.1" max="1" step="0.05" value="0.7"><p class="hint">提供参考图时使用，越高变化越大。</p></div>
+          <div class="field wide"><label for="trial-negative">额外负面提示词</label><textarea id="trial-negative" maxlength="1000" placeholder="例如：模糊、低清晰度，多余的手指" rows="2"></textarea></div>
+          <div class="field"><label for="trial-selfie">角色自拍</label><input id="trial-selfie" type="checkbox"><p class="hint">使用已保存的角色形象与自拍设置。</p></div>
+          <div class="field"><label for="trial-style">拍照方式</label><select id="trial-style"><option value="auto">自动选择</option><option value="standard">前置自拍</option><option value="mirror">对镜自拍</option><option value="photo">他人拍摄</option></select></div>
+          <div class="field wide"><label>参考图片（可选）</label><div class="upload-tile"><img id="trial-reference-preview" alt="绘图参考图" hidden><div><button id="trial-upload" type="button">上传参考图</button><p id="trial-reference-name" class="hint">JPG、PNG、WebP，最大 20 MB</p></div></div><input id="trial-file" type="file" accept="image/jpeg,image/png,image/webp" hidden><button id="trial-remove-reference" type="button" hidden>移除参考图</button></div>
+        </div><button id="trial-start" type="button" class="primary">开始绘图</button></fieldset>
+        <div class="actions" style="margin-top:12px"><button id="trial-cancel" type="button" hidden>停止等待</button><button id="trial-refresh" type="button">查询状态</button></div>
+        <p id="trial-status" role="status" aria-live="polite">填写描述，选择模型后开始绘图。</p>
+      </section>
+      <section class="card"><h2>生成结果</h2><p id="trial-result-info" class="muted">生成完成后会显示图片，点击图片可放大查看。</p><p id="trial-empty" class="empty muted">等待你的第一张作品</p><img id="trial-preview" class="trial-preview" alt="绘图生成结果，点击放大查看" tabindex="0" hidden></section>
+    </div>
+  </section>
+  <fieldset id="editor" disabled style="border:0;padding:0;margin:0">
+    <div data-content-panel="models" hidden>
+    <div id="models"></div>
+    <button id="add" type="button">＋ 添加模型</button>
+    <section id="defaults-card" class="card defaults-card"><h2>默认使用哪个模型</h2><p class="muted">选择一次，之后的画图请求就会使用对应服务。</p><div id="defaults" class="grid"></div></section>
+    </div>
+    <div id="settings-panels"></div>
+  </fieldset>
+  </main></div>
+  <dialog id="appearance-dialog" aria-labelledby="appearance-title">
+    <header class="dialog-header"><div><h2 id="appearance-title">背景与外观</h2><p class="hint">给你的绘图工作台换一张背景。</p></div><button id="appearance-close" type="button" aria-label="关闭外观设置">×</button></header>
+    <div class="dialog-content">
+      <div class="field"><label for="appearance-theme">界面配色</label><select id="appearance-theme"><option value="dark">深色</option><option value="light">浅色</option><option value="auto">跟随 MaiBot</option></select></div>
+      <div class="field"><label>内置渐变</label><div class="preset-list"><button type="button" data-preset="ink" aria-pressed="true"><span class="swatch"></span>墨色</button><button type="button" data-preset="dawn" aria-pressed="false"><span class="swatch"></span>暮霞</button><button type="button" data-preset="forest" aria-pressed="false"><span class="swatch"></span>山岚</button></div></div>
+      <div class="field"><label>自定义背景图片</label><div class="upload-tile"><img id="background-preview" alt="背景图片预览" hidden><div><button id="background-upload" type="button">选择背景图片</button><p id="background-name" class="muted">支持 JPG、PNG、WebP</p></div></div><input id="background-file" type="file" accept="image/jpeg,image/png,image/webp" hidden><div class="actions"><button id="background-use" type="button" disabled>使用已上传图片</button><button id="background-remove" type="button" disabled>移除图片</button></div><p class="hint">图片会自动保留；外观调节完成后点击「保存外观」。</p></div>
+      <div class="field"><label class="range-label" for="appearance-overlay">背景遮罩 <output id="overlay-value">45%</output></label><input id="appearance-overlay" type="range" min="0" max="85" value="45"><p class="hint">背景越明亮，建议遮罩越深。</p></div>
+      <div class="field"><label class="range-label" for="appearance-blur">背景模糊 <output id="blur-value">0 px</output></label><input id="appearance-blur" type="range" min="0" max="18" value="0"></div>
+      <div class="field"><label class="range-label" for="appearance-opacity">卡片不透明度 <output id="opacity-value">88%</output></label><input id="appearance-opacity" type="range" min="65" max="100" value="88"></div>
+      <div class="field"><label for="appearance-position">背景图片位置</label><select id="appearance-position"><option value="center">居中</option><option value="top">靠上</option><option value="bottom">靠下</option></select></div>
+      <p id="appearance-status" role="status" aria-live="polite"></p>
+    </div>
+    <footer class="dialog-footer"><button id="appearance-reset" type="button">恢复默认</button><button id="appearance-save" type="button" class="primary">保存外观</button></footer>
+  </dialog>
+  <dialog id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+    <header class="dialog-header"><h2 id="confirm-title">确认操作</h2></header>
+    <div class="dialog-content"><p id="confirm-message" class="muted"></p></div>
+    <footer class="dialog-footer"><button id="confirm-cancel" type="button" autofocus>取消</button><button id="confirm-accept" type="button" class="primary">确认</button></footer>
+  </dialog>
+  <dialog id="trial-image-dialog" aria-labelledby="trial-image-title"><header class="dialog-header"><h2 id="trial-image-title">绘图结果</h2><button id="trial-image-close" type="button" aria-label="关闭图片">×</button></header><img id="trial-large-image" alt="绘图结果大图"></dialog>
+</div>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const clone = value => structuredClone(value);
+  const state = { items: [], defaults: {}, fields: {}, newModel: {}, settings: {}, panels: [], currentPanel: 'trial', revision: '', dirty: false, busy: true, loaded: false };
+  const trialPanel = {id:'trial',title:'绘图',description:'选择模型、填写描述，直接预览文生图、图生图和角色自拍。'};
+  const trial = { busy:false, running:false, polling:false, timer:null, jobId:'', imageJobId:'', referenceId:'', referenceUrl:'', imageUrl:'', savedModels:[] };
+  const defaultLabels = { default_txt2img_model: '默认文生图模型', default_img2img_model: '默认图生图模型', pic_command_model: '命令画图使用的模型' };
+  const connectionFields = ['format', 'name', 'base_url', 'api_key', 'model', 'support_img2img'];
+  const regularFields = ['fixed_size_enabled', 'default_size', 'custom_prompt_add', 'negative_prompt_add'];
+  const groupLabels = { connection: '模型编号', params: '图片参数', prompts: '提示词与自拍参数', platform: '采样与画面参数', novelai: 'NovelAI 设置', mengyuai: '梦羽图生图设置', dashscope: '百炼设置' };
+
+  function node(tag, text, className) {
+    const result = document.createElement(tag);
+    if (text !== undefined) result.textContent = text;
+    if (className) result.className = className;
+    return result;
+  }
+  function message(text, tone = '') { $('status').textContent = text; $('status').dataset.tone = tone; }
+  let pendingConfirmation = null;
+  function confirmAction(title, description, acceptLabel, destructive = false) {
+    // 宿主 iframe 不允许原生 confirm()；页内 dialog 不依赖 allow-modals。
+    if (pendingConfirmation) return Promise.resolve(false);
+    return new Promise(resolve => {
+      pendingConfirmation = resolve;
+      $('confirm-title').textContent = title;
+      $('confirm-message').textContent = description;
+      $('confirm-accept').textContent = acceptLabel;
+      $('confirm-accept').className = destructive ? 'primary destructive' : 'primary';
+      $('confirm-dialog').showModal();
+    });
+  }
+  function finishConfirmation(accepted) {
+    const resolve = pendingConfirmation;
+    pendingConfirmation = null;
+    if ($('confirm-dialog').open) $('confirm-dialog').close();
+    if (resolve) resolve(accepted);
+  }
+  $('confirm-cancel').addEventListener('click', () => finishConfirmation(false));
+  $('confirm-accept').addEventListener('click', () => finishConfirmation(true));
+  $('confirm-dialog').addEventListener('cancel', event => { event.preventDefault(); finishConfirmation(false); });
+  $('confirm-dialog').addEventListener('close', () => {
+    if (!$('confirm-dialog').open) finishConfirmation(false);
+  });
+  function setBusy(value) {
+    state.busy = value;
+    $('editor').disabled = value || !state.loaded;
+    $('reload').disabled = value;
+    $('save').disabled = value || !state.dirty;
+    syncDependencies();
+    syncTrialControls();
+  }
+  function changed() {
+    state.dirty = true;
+    $('save').disabled = state.busy;
+    message('有未保存的修改');
+  }
+  function visible(field, item) {
+    if (field.formats && !field.formats.includes(item.format)) return false;
+    if (field.name === 'selfie_reference_strength' && item.format === 'openai' && item.prompt_syntax !== 'tags') return false;
+    if (['img2img_model_index', 'image_upload_url', 'selfie_reference_strength', 'novelai_img2img_strength', 'novelai_img2img_noise'].includes(field.name) && !item.support_img2img) return false;
+    return true;
+  }
+  function fieldControl(name, definition, value, onChange, id) {
+    const wrapper = node('div', undefined, 'field');
+    const label = node('label', definition.label || name);
+    label.htmlFor = id;
+    let input;
+    if (definition.choices) {
+      input = node('select');
+      definition.choices.forEach(choice => {
+        const option = node('option', definition.choice_labels?.[choice] || String(choice));
+        option.value = String(choice); input.append(option);
+      });
+    } else if (definition.type === 'textarea') {
+      input = node('textarea'); wrapper.classList.add('wide');
+    } else {
+      input = node('input');
+      input.type = ['boolean', 'switch'].includes(definition.type) ? 'checkbox'
+        : ['number', 'integer'].includes(definition.type) ? 'number'
+        : definition.type === 'password' ? 'password' : 'text';
+      if (input.type === 'password') input.autocomplete = 'new-password';
+      if (input.type === 'number') {
+        input.step = String(definition.step ?? 'any');
+        if (definition.min != null) input.min = definition.min;
+        if (definition.max != null) input.max = definition.max;
+      }
+    }
+    input.id = id;
+    if (name === 'base_url') input.type = 'url';
+    if (name === 'base_url' || name === 'model' || name === 'target_id' || input.type === 'number' || definition.min_length > 0) input.required = true;
+    if (definition.max_length != null && input.type !== 'number') input.maxLength = definition.max_length;
+    if (definition.pattern && input.tagName === 'INPUT' && input.type === 'text') input.pattern = definition.pattern.startsWith('^') ? definition.pattern : `.*(?:${definition.pattern}).*`;
+    if (input.tagName === 'TEXTAREA') input.rows = definition.rows || 3;
+    if (name === 'quiet_hours_start' || name === 'quiet_hours_end') input.type = 'time';
+    if (input.type === 'checkbox') input.checked = !!value;
+    else input.value = value ?? '';
+    input.placeholder = definition.placeholder || '';
+    input.addEventListener(input.tagName === 'SELECT' || input.type === 'checkbox' ? 'change' : 'input', () => {
+      const next = input.type === 'checkbox' ? input.checked : input.type === 'number' && input.value !== '' ? Number(input.value) : input.value;
+      onChange(next); changed();
+    });
+    wrapper.append(label, input);
+    if (definition.hint) wrapper.append(node('p', definition.hint, 'hint'));
+    return wrapper;
+  }
+  function modelTitle(item, index) { return item.name.trim() || `模型 ${index + 1}`; }
+  function modelCard(item, index) {
+    const card = node('section', undefined, 'card');
+    const header = node('header', undefined, 'card-header');
+    const title = node('h2', modelTitle(item, index));
+    const heading = node('div', undefined, 'model-heading');
+    const caption = node('div');
+    const formatLabel = state.fields.format.choice_labels?.[item.format] || item.format;
+    caption.append(title, node('div', formatLabel, 'model-badge'));
+    heading.append(node('span', String(index + 1).padStart(2, '0'), 'model-number'), caption);
+    const remove = node('button', '删除模型', 'danger'); remove.type = 'button';
+    remove.addEventListener('click', async () => {
+      if (!await confirmAction('删除模型', `删除“${modelTitle(item, index)}”？点击保存配置后生效。`, '删除模型', true)) return;
+      const currentIndex = state.items.indexOf(item);
+      if (currentIndex < 0) return;
+      state.items.splice(currentIndex, 1); changed(); render();
+    });
+    header.append(heading, remove); card.append(header);
+    const connection = node('div', undefined, 'grid');
+    const regular = node('div', undefined, 'grid');
+    const backend = node('div');
+    const advanced = node('details'); advanced.append(node('summary', '更多图片与提示词设置'));
+    const advancedGroups = new Map();
+
+    const firstFields = [...connectionFields, ...regularFields];
+    const orderedNames = [...firstFields, ...Object.keys(state.fields).filter(name => !firstFields.includes(name))];
+    for (const name of orderedNames) {
+      const definition = state.fields[name];
+      const field = { ...definition, name };
+      if (!visible(field, item)) continue;
+      const control = fieldControl(name, field, item[name], next => {
+        item[name] = next;
+        if (name === 'format' || name === 'support_img2img' || name === 'prompt_syntax') render();
+        else if (name === 'name' || name === 'id') { title.textContent = modelTitle(item, index); renderDefaults(); renderSettings(); }
+      }, `model-${index}-${name}`);
+      if (connectionFields.includes(name)) connection.append(control);
+      else if (regularFields.includes(name)) regular.append(control);
+      else if (['novelai', 'mengyuai', 'dashscope'].includes(field.group)) {
+        let group = backend.querySelector(`[data-group="${field.group}"]`);
+        if (!group) { group = node('div', undefined, 'grid'); group.dataset.group = field.group; backend.append(node('h3', groupLabels[field.group], 'section-heading'), group); }
+        group.append(control);
+      } else {
+        if (!advancedGroups.has(field.group)) {
+          const grid = node('div', undefined, 'grid');
+          advancedGroups.set(field.group, grid);
+          advanced.append(node('h3', groupLabels[field.group] || '其他参数', 'section-heading'), grid);
+        }
+        advancedGroups.get(field.group).append(control);
+      }
+    }
+    card.append(node('h3', '连接信息', 'section-heading'), connection, node('h3', '画面与提示词', 'section-heading'), regular, backend);
+    if (advancedGroups.size) card.append(advanced);
+    return card;
+  }
+  function renderDefaults() {
+    $('defaults').replaceChildren();
+    for (const [name, label] of Object.entries(defaultLabels)) {
+      const choices = state.items.map(item => item.id).filter(Boolean);
+      const labels = Object.fromEntries(state.items.map((item, index) => [item.id, `${modelTitle(item, index)}（${item.id}）`]));
+      // 下拉框使用非空占位值，写入配置时还原为空字符串。
+      if (name === 'default_img2img_model') { choices.unshift('__inherit__'); labels.__inherit__ = '沿用默认文生图模型'; }
+      if (state.defaults[name] && !choices.includes(state.defaults[name])) {
+        choices.push(state.defaults[name]); labels[state.defaults[name]] = `${state.defaults[name]}（模型不存在，请重新选择）`;
+      }
+      const value = state.defaults[name] || (name === 'default_img2img_model' ? '__inherit__' : name === 'default_txt2img_model' && choices.includes('model1') ? 'model1' : '');
+      const control = fieldControl(name, { label, choices, choice_labels: labels }, value, next => { state.defaults[name] = next === '__inherit__' ? '' : next; }, `default-${name}`);
+      const select = control.querySelector('select');
+      if (!value) { const placeholder = node('option', '请选择模型'); placeholder.value = ''; placeholder.disabled = true; select.prepend(placeholder); select.value = ''; }
+      $('defaults').append(control);
+    }
+  }
+  function render() {
+    $('models').replaceChildren(...state.items.map(modelCard));
+    $('model-count').textContent = `· ${state.items.length}`;
+    if (!state.items.length) $('models').append(node('p', '尚未添加模型，请点击下方按钮。', 'empty muted'));
+    renderDefaults();
+    renderSettings();
+    renderTrialModels();
+    switchPanel(state.currentPanel);
+  }
+  function switchPanel(id) {
+    if (id !== state.currentPanel) $('workspace').scrollTop = 0;
+    state.currentPanel = id;
+    document.querySelectorAll('[data-content-panel]').forEach(panel => { panel.hidden = panel.dataset.contentPanel !== id; });
+    document.querySelectorAll('button[data-panel]').forEach(button => {
+      const active = button.dataset.panel === id;
+      button.classList.toggle('active', active);
+      if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
+    });
+    const panel = [trialPanel, ...state.panels].find(item => item.id === id);
+    $('page-title').textContent = panel?.title || '模型配置';
+    $('page-description').textContent = panel?.description || '连接绘图服务，让每种灵感都有合适的模型。';
+  }
+  function renderNavigation() {
+    $('page-nav').replaceChildren();
+    $('mobile-nav').replaceChildren();
+    const panels = [trialPanel, {id:'models',title:'模型服务'}, ...state.panels];
+    for (const id of ['trial', 'common', 'models', 'styles', 'selfie', 'quota']) {
+      const panel = panels.find(item => item.id === id);
+      if (!panel) continue;
+      const button = node('button', panel.title); button.type = 'button'; button.dataset.panel = panel.id;
+      button.addEventListener('click', () => switchPanel(panel.id));
+      $('mobile-nav').append(button);
+      const railButton = button.cloneNode(true);
+      if (panel.id === 'models') {
+        railButton.id = 'nav-models';
+        const count = node('span'); count.id = 'model-count'; railButton.append(' ', count);
+      }
+      railButton.addEventListener('click', () => switchPanel(panel.id));
+      $('page-nav').append(railButton);
+    }
+  }
+  function syncDependencies() {
+    document.querySelectorAll('[data-depends-on]').forEach(wrapper => {
+      const [section, name] = wrapper.dataset.dependsOn.split('.');
+      const enabled = state.settings[section]?.[name] === JSON.parse(wrapper.dataset.dependsValue);
+      wrapper.querySelectorAll('input,select,textarea,button').forEach(control => { control.disabled = state.busy || !enabled; });
+    });
+  }
+  function modelSelector(name, definition, value) {
+    if (!['llm_selfie_model','selfie_model','model_id'].includes(name)) return definition;
+    const choices = ['', ...state.items.map(item => item.id).filter(Boolean)];
+    const labels = {'': name === 'selfie_model' ? '沿用聊天自拍模型' : '自动选择'};
+    state.items.forEach((item, index) => { labels[item.id] = `${modelTitle(item, index)}（${item.id}）`; });
+    if (value && !choices.includes(value)) { choices.push(value); labels[value] = `${value}（模型不存在，请重新选择）`; }
+    return {...definition, choices, choice_labels: labels};
+  }
+  function listControl(section, name, definition, id) {
+    const wrapper = node('div', undefined, 'list-editor');
+    wrapper.append(node('h3', definition.label, 'section-heading'));
+    if (definition.hint) wrapper.append(node('p', definition.hint, 'hint'));
+    const values = state.settings[section][name];
+    values.forEach((item, index) => {
+      const row = node('div', undefined, 'list-row');
+      const header = node('div', undefined, 'card-header');
+      const label = node('strong', definition.item_fields ? item.name || `第 ${index + 1} 项` : `第 ${index + 1} 项`);
+      const remove = node('button', '移除', 'danger'); remove.type = 'button';
+      remove.addEventListener('click', async () => {
+        if (definition.item_fields && !await confirmAction('移除条目', `移除“${label.textContent}”？保存配置后生效。`, '移除', true)) return;
+        values.splice(index, 1); changed(); renderSettings();
+      });
+      header.append(label, remove); row.append(header);
+      const grid = node('div', undefined, 'grid');
+      if (definition.item_fields) {
+        for (const [child, field] of Object.entries(definition.item_fields)) {
+          grid.append(fieldControl(child, field, item[child], next => {
+            item[child] = next;
+            if (child === 'name') label.textContent = next || `第 ${index + 1} 项`;
+          }, `${id}-${index}-${child}`));
+        }
+      } else {
+        grid.append(fieldControl(name, {
+          type:definition.item_type || 'string', label:definition.item_choices ? '活动类型' : 'ID',
+          choices:definition.item_choices, choice_labels:definition.choice_labels,
+        }, item, next => { values[index] = next; }, `${id}-${index}`));
+      }
+      row.append(grid); wrapper.append(row);
+    });
+    if (!values.length) wrapper.append(node('p', '尚未添加条目。', 'muted'));
+    const add = node('button', '＋ 添加条目'); add.type = 'button';
+    add.addEventListener('click', () => {
+      let value = definition.item_fields
+        ? Object.fromEntries(Object.entries(definition.item_fields).map(([child, field]) => [child, clone(field.default ?? '')]))
+        : definition.item_choices?.find(choice => !values.includes(choice)) || '';
+      if (section === 'styles') {
+        let number = 1;
+        while (values.some(item => item.name === `style${number}`)) number++;
+        value = {...value, name:`style${number}`, aliases:'', prompt:''};
+      }
+      values.push(value); changed(); renderSettings();
+    });
+    wrapper.append(add); return wrapper;
+  }
+  function renderSettings() {
+    const containers = state.panels.map(panel => {
+      const container = node('div'); container.dataset.contentPanel = panel.id; container.hidden = panel.id !== state.currentPanel;
+      for (const section of panel.sections) {
+        const card = node(section.collapsed ? 'details' : 'section', undefined, 'card');
+        card.append(node(section.collapsed ? 'summary' : 'h2', section.title));
+        if (section.description) card.append(node('p', section.description, 'muted'));
+        const grid = node('div', undefined, 'grid');
+        for (const [name, definition] of Object.entries(section.fields)) {
+          const id = `setting-${section.key}-${name}`;
+          const value = state.settings[section.name][name];
+          const field = definition.type === 'array'
+            ? listControl(section.name, name, definition, id)
+            : fieldControl(name, modelSelector(name, definition, value), value, next => {
+              state.settings[section.name][name] = next; syncDependencies();
+            }, id);
+          if (definition.depends_on) { field.dataset.dependsOn = definition.depends_on; field.dataset.dependsValue = JSON.stringify(definition.depends_value); }
+          grid.append(field);
+        }
+        card.append(grid); container.append(card);
+      }
+      return container;
+    });
+    $('settings-panels').replaceChildren(...containers); syncDependencies();
+  }
+  async function load() {
+    if (state.dirty && !await confirmAction('重新加载配置', '重新加载会放弃所有分区未保存的修改，是否继续？', '重新加载')) return;
+    setBusy(true);
+    try {
+      const result = await window.maibot.query('load');
+      if (!result.success) throw new Error(result.error || '加载失败');
+      Object.assign(state, { items: result.items, defaults: result.defaults, fields: result.fields, newModel: result.new_model, settings: result.settings, panels: result.panels, revision: result.revision, dirty: false, loaded: true });
+      trial.savedModels = clone(result.items);
+      renderNavigation();
+      render(); message('配置已加载');
+    } catch (error) { message(error.message, 'error'); }
+    finally { setBusy(false); }
+  }
+  $('add').addEventListener('click', () => {
+    const item = clone(state.newModel);
+    let number = 1;
+    while (state.items.some(model => model.id === `model${number}`)) number++;
+    item.id = `model${number}`;
+    state.items.push(item);
+    if (state.items.length === 1) { state.defaults.default_txt2img_model = item.id; state.defaults.pic_command_model = item.id; }
+    changed(); render();
+  });
+  $('reload').addEventListener('click', load);
+  $('save').addEventListener('click', async () => {
+    for (const control of $('editor').querySelectorAll('input,select,textarea')) {
+      if (control.disabled) continue;
+      if (!control.checkValidity()) {
+        switchPanel(control.closest('[data-content-panel]').dataset.contentPanel);
+        const detail = control.closest('details');
+        if (detail) detail.open = true;
+        control.reportValidity(); return;
+      }
+    }
+    if (!state.items.length) { message('请至少保留一个模型。', 'error'); return; }
+    setBusy(true);
+    try {
+      const result = await window.maibot.action('save', { payload: JSON.stringify({ items: state.items, defaults: state.defaults, settings: state.settings }), revision: state.revision });
+      if (!result.success) throw new Error(result.error || '保存失败');
+      Object.assign(state, { items: result.items, defaults: result.defaults, settings: result.settings, revision: result.revision, dirty: false });
+      trial.savedModels = clone(result.items);
+      render(); message('配置已保存，将自动同步到插件。', 'success');
+    } catch (error) { message(error.message, 'error'); }
+    finally { setBusy(false); }
+  });
+  function trialMessage(text, error = false) { $('trial-status').textContent = text; $('trial-status').dataset.error = String(error); }
+  function syncTrialControls() {
+    $('trial-inputs').disabled = state.busy || !state.loaded || trial.busy;
+    $('trial-strength').disabled = !trial.referenceId;
+    $('trial-style').disabled = !$('trial-selfie').checked;
+    $('trial-remove-reference').hidden = !trial.referenceId;
+    $('trial-cancel').hidden = !trial.running;
+    $('trial-refresh').disabled = trial.polling || !state.loaded || (trial.busy && !trial.running);
+  }
+  function renderTrialModels() {
+    const selected = $('trial-model').value;
+    $('trial-model').replaceChildren();
+    const automatic = node('option', '自动选择已保存的默认模型'); automatic.value = ''; $('trial-model').append(automatic);
+    trial.savedModels.forEach(item => {
+      const option = node('option', `${item.name || item.id}（${item.id}）`); option.value = item.id; $('trial-model').append(option);
+    });
+    if (trial.savedModels.some(item => item.id === selected)) $('trial-model').value = selected;
+    syncTrialControls();
+  }
+  function acceptTrialJob(job) {
+    trial.jobId = job.id || '';
+    trial.running = job.state === 'running';
+    trial.busy = trial.running;
+    if (job.state === 'running') trialMessage(`正在生成，已等待 ${Math.floor(job.elapsed_seconds || 0)} 秒…`);
+    else if (job.state === 'failed') trialMessage(job.error || '绘图失败，请检查模型配置。', true);
+    else if (job.state === 'cancelled') trialMessage('已停止等待；服务商已开始的请求可能仍会消耗额度。');
+    syncTrialControls();
+  }
+  async function loadTrialImage(job) {
+    if (trial.imageJobId === job.id) return;
+    if (!/^image\/(png|jpeg|webp|gif)$/.test(job.mime) || !Number.isInteger(job.chunks) || job.chunks < 1 || job.chunks > 200) throw new Error('绘图结果无法预览。');
+    trial.busy = true; syncTrialControls();
+    const chunks = [];
+    for (let index = 0; index < job.chunks; index++) {
+      trialMessage(`正在载入图片（${index + 1}/${job.chunks}）…`);
+      const result = await window.maibot.query('trial_result', {job_id:job.id, index});
+      if (!result.success || typeof result.data !== 'string' || result.data.length > 240000) throw new Error(result.error || '图片读取失败，请查询状态重试。');
+      chunks.push(result.data);
+    }
+    const binary = atob(chunks.join(''));
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+    const url = URL.createObjectURL(new Blob([bytes], {type:job.mime}));
+    if (trial.imageUrl) URL.revokeObjectURL(trial.imageUrl);
+    trial.imageUrl = url; trial.imageJobId = job.id;
+    $('trial-preview').src = url; $('trial-preview').hidden = false; $('trial-empty').hidden = true;
+    $('trial-large-image').src = url;
+    $('trial-result-info').textContent = `${job.model_id} · ${job.size || '自动尺寸'} · ${job.is_img2img ? '图生图' : '文生图'} · ${job.elapsed_seconds} 秒`;
+    trialMessage('绘图完成，点击图片可放大查看。');
+  }
+  async function refreshTrial(restore = false) {
+    if (trial.polling) return;
+    clearTimeout(trial.timer); trial.polling = true; syncTrialControls();
+    try {
+      const result = await window.maibot.query('trial_status', trial.jobId ? {job_id:trial.jobId} : {});
+      if (!result.success) throw new Error(result.error || '未能查询绘图状态。');
+      const job = result.job;
+      if (restore) {
+        trial.referenceId = result.reference_id || '';
+        if (trial.referenceId) $('trial-reference-name').textContent = '沿用已上传的参考图，可重新上传或移除。';
+      }
+      if (restore && job.request) {
+        $('trial-prompt').value = job.request.prompt;
+        $('trial-model').value = job.request.model_id;
+        $('trial-size').value = job.request.size;
+        $('trial-negative').value = job.request.negative_prompt;
+        $('trial-strength').value = job.request.strength;
+        $('trial-selfie').checked = job.request.selfie_mode;
+        $('trial-style').value = job.request.selfie_style;
+      }
+      acceptTrialJob(job);
+      if (job.state === 'ready') await loadTrialImage(job);
+      if (job.state === 'idle') trialMessage('填写描述，选择模型后开始绘图。');
+    } catch (error) {
+      trial.running = false;
+      trialMessage(`${error.message} 点击「查询状态」可再次核对。`, true);
+    } finally {
+      trial.polling = false; trial.busy = trial.running; syncTrialControls();
+      if (trial.running) trial.timer = setTimeout(() => refreshTrial(), 1500);
+    }
+  }
+  $('trial-start').addEventListener('click', async () => {
+    if (trial.busy || trial.polling) return;
+    if (state.dirty) { trialMessage('请先保存配置，再使用当前设置绘图。', true); return; }
+    if (!$('trial-prompt').value.trim()) { trialMessage('请先描述想画的内容。', true); $('trial-prompt').focus(); return; }
+    for (const input of $('trial-inputs').querySelectorAll('input,select,textarea')) {
+      if (!input.disabled && !input.checkValidity()) { input.reportValidity(); return; }
+    }
+    const requestId = Array.from(crypto.getRandomValues(new Uint8Array(16)), value => value.toString(16).padStart(2,'0')).join('');
+    const request = {
+      prompt:$('trial-prompt').value.trim(), model_id:$('trial-model').value, size:$('trial-size').value.trim(),
+      negative_prompt:$('trial-negative').value, reference_id:trial.referenceId, strength:trial.referenceId ? Number($('trial-strength').value) : 0.7,
+      selfie_mode:$('trial-selfie').checked, selfie_style:$('trial-style').value,
+    };
+    trial.busy = true; trial.jobId = requestId; syncTrialControls(); trialMessage('正在提交绘图…');
+    try {
+      const result = await window.maibot.action('trial_start', {payload:JSON.stringify(request), request_id:requestId});
+      if (!result.success && !result.job) { trial.jobId = ''; throw new Error(result.error || '绘图未能开始。'); }
+      acceptTrialJob(result.job);
+      await refreshTrial();
+    } catch (error) {
+      trialMessage(error.message, true);
+      // 回执超时不能自动再次生图，保留编号供「查询状态」核对原任务。
+    } finally { trial.busy = trial.running; syncTrialControls(); }
+  });
+  $('trial-refresh').addEventListener('click', () => refreshTrial());
+  $('trial-cancel').addEventListener('click', async () => {
+    clearTimeout(trial.timer); $('trial-cancel').disabled = true;
+    try {
+      const result = await window.maibot.action('trial_cancel', {job_id:trial.jobId});
+      if (!result.success) throw new Error(result.error || '未能停止绘图，请查询状态。');
+      acceptTrialJob(result.job);
+      if (result.job.state === 'ready') await refreshTrial();
+    } catch (error) { trialMessage(error.message, true); }
+    finally { $('trial-cancel').disabled = false; }
+  });
+  $('trial-selfie').addEventListener('change', syncTrialControls);
+  $('trial-upload').addEventListener('click', () => $('trial-file').click());
+  $('trial-file').addEventListener('change', async event => {
+    const file = event.target.files[0];
+    if (!file) return;
+    trial.busy = true; syncTrialControls(); trialMessage('正在上传参考图…');
+    try {
+      if (file.size > 20 * 1024 * 1024 || !['image/jpeg','image/png','image/webp'].includes(file.type)) throw new Error('请选择不超过 20 MB 的 JPG、PNG 或 WebP 图片。');
+      const result = await window.maibot.upload('reference', file, {filename:file.name.slice(0,160)});
+      if (!result.success) throw new Error(result.error || '参考图上传失败。');
+      if (trial.referenceUrl) URL.revokeObjectURL(trial.referenceUrl);
+      trial.referenceId = result.reference_id; trial.referenceUrl = URL.createObjectURL(file);
+      $('trial-reference-preview').src = trial.referenceUrl; $('trial-reference-preview').hidden = false;
+      $('trial-reference-name').textContent = file.name;
+      trialMessage('参考图已上传，开始绘图将使用图生图。');
+    } catch (error) { trialMessage(error.message, true); }
+    finally { event.target.value = ''; trial.busy = false; syncTrialControls(); }
+  });
+  $('trial-remove-reference').addEventListener('click', async () => {
+    trial.busy = true; syncTrialControls();
+    try {
+      const result = await window.maibot.action('trial_remove_reference', {reference_id:trial.referenceId});
+      if (!result.success) throw new Error(result.error || '参考图移除失败，请查询状态。');
+      trial.referenceId = '';
+      if (trial.referenceUrl) URL.revokeObjectURL(trial.referenceUrl);
+      trial.referenceUrl = ''; $('trial-reference-preview').hidden = true; $('trial-reference-preview').removeAttribute('src');
+      $('trial-reference-name').textContent = 'JPG、PNG、WebP，最大 20 MB';
+    } catch (error) { trialMessage(error.message, true); }
+    finally { trial.busy = false; syncTrialControls(); }
+  });
+  function openTrialImage() { if (trial.imageUrl) $('trial-image-dialog').showModal(); }
+  $('trial-preview').addEventListener('click', openTrialImage);
+  $('trial-preview').addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openTrialImage(); } });
+  $('trial-image-close').addEventListener('click', () => $('trial-image-dialog').close());
+  window.addEventListener('pagehide', () => {
+    clearTimeout(trial.timer);
+    for (const url of [trial.referenceUrl, trial.imageUrl]) if (url) URL.revokeObjectURL(url);
+  });
+  const appearanceDefaults = { theme: 'dark', preset: 'ink', mode: 'gradient', overlay: 45, blur: 0, card_opacity: 88, image_position: 'center', image: '', image_name: '' };
+  let savedAppearance = clone(appearanceDefaults);
+  let appearance = clone(appearanceDefaults);
+  let appearanceBusy = false;
+  const preferenceKeys = ['theme', 'preset', 'mode', 'overlay', 'blur', 'card_opacity', 'image_position'];
+  const preferences = value => Object.fromEntries(preferenceKeys.map(key => [key, value[key]]));
+  const appearanceDirty = () => JSON.stringify(preferences(appearance)) !== JSON.stringify(preferences(savedAppearance));
+  function appearanceMessage(text, error = false) { $('appearance-status').textContent = text; $('appearance-status').dataset.error = String(error); }
+  function applyAppearance() {
+    const root = $('journal-page');
+    const hostTheme = window.maibot?.context?.theme || 'dark';
+    root.dataset.theme = appearance.theme === 'auto' ? hostTheme === 'light' ? 'light' : 'dark' : appearance.theme;
+    root.dataset.preset = appearance.preset;
+    const hasImage = /^data:image\/webp;base64,[A-Za-z0-9+/=]+$/.test(appearance.image);
+    root.dataset.background = appearance.mode === 'image' && hasImage ? 'image' : 'gradient';
+    root.style.setProperty('--aj-overlay', String(appearance.overlay / 100));
+    root.style.setProperty('--aj-blur', `${appearance.blur}px`);
+    root.style.setProperty('--aj-card-opacity', String(appearance.card_opacity / 100));
+    $('background-image').style.backgroundImage = hasImage ? `url("${appearance.image}")` : 'none';
+    $('background-image').style.backgroundPosition = appearance.image_position;
+    const presetNames = { ink: '墨色渐变', dawn: '暮霞渐变', forest: '山岚渐变' };
+    $('background-caption').textContent = `${root.dataset.background === 'image' ? '自定义图片' : presetNames[appearance.preset]} · ${root.dataset.theme === 'dark' ? '深色' : '浅色'}`;
+  }
+  function syncAppearanceControls() {
+    $('appearance-theme').value = appearance.theme;
+    $('appearance-position').value = appearance.image_position;
+    $('appearance-overlay').value = appearance.overlay;
+    $('appearance-blur').value = appearance.blur;
+    $('appearance-opacity').value = appearance.card_opacity;
+    $('overlay-value').textContent = `${appearance.overlay}%`;
+    $('blur-value').textContent = `${appearance.blur} px`;
+    $('opacity-value').textContent = `${appearance.card_opacity}%`;
+    document.querySelectorAll('.preset-list [data-preset]').forEach(button => button.setAttribute('aria-pressed', String(appearance.mode === 'gradient' && button.dataset.preset === appearance.preset)));
+    $('background-preview').hidden = !appearance.image;
+    if (appearance.image) $('background-preview').src = appearance.image;
+    else $('background-preview').removeAttribute('src');
+    $('background-name').textContent = appearance.image_name || '支持 JPG、PNG、WebP，最大 20 MB';
+    $('background-use').disabled = appearanceBusy || !appearance.image;
+    $('background-remove').disabled = appearanceBusy || !appearance.image;
+  }
+  function setAppearanceBusy(value) {
+    appearanceBusy = value;
+    $('appearance-dialog').querySelectorAll('button,input,select').forEach(control => { control.disabled = value; });
+    syncAppearanceControls();
+  }
+  function acceptAppearance(result) {
+    if (!result.success || !result.appearance) throw new Error(result.error || '外观操作失败');
+    savedAppearance = clone(result.appearance);
+    appearance = clone(result.appearance);
+    applyAppearance(); syncAppearanceControls();
+  }
+  async function loadAppearance() {
+    try { acceptAppearance(await window.maibot.query('appearance')); }
+    catch (error) { appearanceMessage(error.message, true); }
+  }
+  function openAppearance() { syncAppearanceControls(); $('appearance-dialog').showModal(); }
+  function closeAppearance() { appearance = clone(savedAppearance); applyAppearance(); $('appearance-dialog').close(); }
+  $('appearance-open').addEventListener('click', openAppearance);
+  $('appearance-mobile').addEventListener('click', openAppearance);
+  $('appearance-close').addEventListener('click', closeAppearance);
+  $('appearance-dialog').addEventListener('cancel', event => { event.preventDefault(); closeAppearance(); });
+  $('appearance-theme').addEventListener('change', event => { appearance.theme = event.target.value; applyAppearance(); });
+  $('appearance-position').addEventListener('change', event => { appearance.image_position = event.target.value; applyAppearance(); });
+  for (const [id, key] of [['appearance-overlay','overlay'], ['appearance-blur','blur'], ['appearance-opacity','card_opacity']]) {
+    $(id).addEventListener('input', event => { appearance[key] = Number(event.target.value); applyAppearance(); syncAppearanceControls(); });
+  }
+  document.querySelectorAll('.preset-list [data-preset]').forEach(button => button.addEventListener('click', () => { appearance.preset = button.dataset.preset; appearance.mode = 'gradient'; applyAppearance(); syncAppearanceControls(); }));
+  $('background-use').addEventListener('click', () => { appearance.mode = 'image'; applyAppearance(); syncAppearanceControls(); });
+  $('background-upload').addEventListener('click', () => $('background-file').click());
+  $('background-file').addEventListener('change', async event => {
+    const file = event.target.files[0];
+    if (!file) return;
+    setAppearanceBusy(true); appearanceMessage('正在上传背景图片…');
+    try {
+      if (file.size > 20 * 1024 * 1024) throw new Error('请选择不超过 20 MB 的图片。');
+      if (!['image/jpeg','image/png','image/webp'].includes(file.type)) throw new Error('请选择 JPG、PNG 或 WebP 图片。');
+      const pending = preferences(appearance);
+      const result = await window.maibot.upload('background', file, {filename:file.name.slice(0,160)});
+      acceptAppearance(result);
+      appearance = {...appearance, ...pending, mode:'image'};
+      applyAppearance(); syncAppearanceControls();
+      appearanceMessage('图片已保留，调整好效果后点击保存外观。');
+    } catch (error) { appearanceMessage(error.message, true); }
+    finally { event.target.value = ''; setAppearanceBusy(false); }
+  });
+  for (const [id, action, messageText] of [['appearance-reset','reset_appearance','已恢复默认外观。'], ['background-remove','remove_background','已移除背景图片。']]) {
+    $(id).addEventListener('click', async () => {
+      setAppearanceBusy(true);
+      try { acceptAppearance(await window.maibot.action(action)); appearanceMessage(messageText); }
+      catch (error) { appearanceMessage(error.message, true); }
+      finally { setAppearanceBusy(false); }
+    });
+  }
+  $('appearance-save').addEventListener('click', async () => {
+    setAppearanceBusy(true); appearanceMessage('正在保存外观…');
+    try { acceptAppearance(await window.maibot.action('save_appearance', {payload:JSON.stringify(preferences(appearance))})); appearanceMessage('外观已保存，重新打开也会保留。'); }
+    catch (error) { appearanceMessage(error.message, true); }
+    finally { setAppearanceBusy(false); }
+  });
+  window.addEventListener('maibot:context', applyAppearance);
+  window.addEventListener('beforeunload', event => { if (state.dirty || appearanceDirty()) { event.preventDefault(); event.returnValue = ''; } });
+  if (window.maibot) window.maibot.ready.then(async () => { await load(); await loadAppearance(); if (state.loaded) await refreshTrial(true); });
+  else message('请在 MaiBot 的「绘卷控制台」页面打开此表单。', 'error');
+})();
+</script>

@@ -385,7 +385,7 @@ def test_sdk_metadata_survives_operation_tracking() -> None:
     components = {item["name"]: item for item in plugin.get_components()}
     assert components["generate_image"]["metadata"]["timeout_ms"] == 660000
     assert components["draw_picture"]["metadata"]["timeout_ms"] == 660000
-    assert components["dr"]["metadata"]["timeout_ms"] == 240000
+    assert components["dr"]["metadata"]["timeout_ms"] == 660000
 
 
 def test_unload_prevents_concurrent_config_reload_from_restarting_tasks(tmp_path: Path) -> None:

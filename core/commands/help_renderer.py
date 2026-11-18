@@ -88,8 +88,8 @@ async def render_current_config(dctx: "DispatcherContext") -> CommandResult:
             return "未知"
         return cfg.get("name", cfg.get("model", "未知"))
 
-    if dctx.group_name:
-        chat_name = dctx.group_name
+    if dctx.group_id or dctx.group_name:
+        chat_name = dctx.group_name or "当前群聊"
     elif dctx.user_nickname:
         chat_name = f"{dctx.user_nickname} 的私聊"
     else:

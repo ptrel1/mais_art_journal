@@ -8,13 +8,16 @@
 - Gemini 风格（含 ':' 如 16:9、或以 '-' 开头如 -2K、或 16:9-2K）→
   payload["image_aspect_ratio"] + payload["image_resolution"]
 """
+from typing import Any, Dict, Tuple
+from urllib.error import HTTPError
+
 import json
 import re
-import urllib.request
 import traceback
-from typing import Dict, Any, Tuple
+import urllib.request
 
 from .base_client import BaseApiClient, logger
+from .openai_http import handle_http_error, normalize_authorization
 from ..utils import pixel_size_to_gemini_aspect
 
 
@@ -77,7 +80,7 @@ class OpenAIChatClient(BaseApiClient):
     ) -> Tuple[bool, str]:
         """发送 Chat Completions 格式的HTTP请求生成图片"""
         base_url = model_config.get("base_url", "")
-        api_key = model_config.get("api_key", "")
+        api_key = normalize_authorization(model_config.get("api_key", ""))
         model = model_config.get("model", "")
 
         endpoint = f"{base_url.rstrip('/')}/chat/completions"
@@ -217,6 +220,11 @@ class OpenAIChatClient(BaseApiClient):
                     logger.error(f"{self.log_prefix} (OpenAI-Chat) API请求失败. 状态: {response_status}. 正文: {response_body_str[:300]}...")
                     return False, f"Chat API请求失败(状态码 {response_status})"
 
+        except HTTPError as e:
+            return handle_http_error(
+                e, authorization=api_key, log_prefix=self.log_prefix,
+                client_name="OpenAI-Chat", error_label="Chat API请求失败",
+            )
         except Exception as e:
             logger.error(f"{self.log_prefix} (OpenAI-Chat) 请求异常: {e!r}", exc_info=True)
             traceback.print_exc()

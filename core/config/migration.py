@@ -117,6 +117,27 @@ def _convert_styles(data: Dict[str, Any]) -> None:
     data["styles"] = {"items": items}
 
 
+def _assign_missing_model_ids(data: Dict[str, Any]) -> None:
+    """原生列表新增项可留空编号；保存时分配未使用的编号，保留已有编号。"""
+    section = data.get("models", {})
+    if not isinstance(section, dict) or not isinstance(section.get("items", []), list):
+        return  # 结构错误由后续配置校验报告。
+    items = section.get("items", [])
+    used = {item["id"] for item in items if isinstance(item, dict) and isinstance(item.get("id"), str)}
+    next_number = 1
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        model_id = item.get("id", "")
+        if not isinstance(model_id, str) or model_id.strip():
+            continue  # 非空重复编号和类型错误仍由配置校验报告。
+        while f"model{next_number}" in used:
+            next_number += 1
+        item["id"] = f"model{next_number}"
+        used.add(item["id"])
+        next_number += 1
+
+
 def _flatten_novelai_options(data: Dict[str, Any]) -> None:
     """在 SDK 移除旧字段之前保留 NAI 嵌套配置，新直接字段优先。"""
     section = data.get("models", {})
@@ -147,6 +168,7 @@ def normalize_config_for_upgrade(
     migrated = deepcopy(dict(config_data))
     _convert_legacy_sections(migrated)
     _convert_models(migrated)
+    _assign_missing_model_ids(migrated)
     _flatten_novelai_options(migrated)
     _convert_styles(migrated)
     # 必须先改名和转结构，再交给 SDK 移除废弃字段、补齐默认值和更新版本号。
@@ -155,8 +177,18 @@ def normalize_config_for_upgrade(
     return normalized, normalized != config_data
 
 
+def _toml_compatible(value: Any) -> Any:
+    """TOML 没有 null；省略未指定的可选字段，读取时由配置模型恢复默认值。"""
+    if isinstance(value, dict):
+        return {key: _toml_compatible(item) for key, item in value.items() if item is not None}
+    if isinstance(value, list):
+        return [_toml_compatible(item) for item in value]
+    return value
+
+
 def _update_document(target: MutableMapping[str, Any], values: Dict[str, Any]) -> None:
     """尽量保留未变配置节的注释；原始完整文档另行逐字节备份。"""
+    values = _toml_compatible(values)
     for key in list(target):
         if key not in values:
             del target[key]

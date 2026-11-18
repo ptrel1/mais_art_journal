@@ -24,6 +24,12 @@ class QuotaRule(PluginConfigBase):
         json_schema_extra={"label": "周期"},
     )
 
+    @field_validator("period", mode="before")
+    @classmethod
+    def normalize_empty_period(cls, value: Optional[str]) -> Optional[str]:
+        """原生列表表单用空字符串表示留空，配置中统一保存为 None。"""
+        return None if value == "" else value
+
 
 class QuotaSection(PluginConfigBase):
     """仅限制用户通过命令或智能 Tool 发起的聊天生图。"""

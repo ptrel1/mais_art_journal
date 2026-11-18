@@ -2,12 +2,15 @@
 
 支持：OpenAI官方、硅基流动、NewAPI、火山方舟等兼容OpenAI格式的服务
 """
+from typing import Any, Dict, Tuple
+from urllib.error import HTTPError
+
 import json
-import urllib.request
 import traceback
-from typing import Dict, Any, Tuple
+import urllib.request
 
 from .base_client import BaseApiClient, logger
+from .openai_http import handle_http_error, normalize_authorization
 
 
 class OpenAIClient(BaseApiClient):
@@ -25,7 +28,7 @@ class OpenAIClient(BaseApiClient):
     ) -> Tuple[bool, str]:
         """发送OpenAI格式的HTTP请求生成图片"""
         base_url = model_config.get("base_url", "")
-        generate_api_key = model_config.get("api_key", "")
+        generate_api_key = normalize_authorization(model_config.get("api_key", ""))
         model = model_config.get("model", "")
 
         # 智能拼接端点：
@@ -222,6 +225,11 @@ class OpenAIClient(BaseApiClient):
                 else:
                     logger.error(f"{self.log_prefix} (OpenAI) API请求失败. 状态: {response.status}. 正文: {cleaned_response[:300]}...")
                     return False, f"图片API请求失败(状态码 {response.status})"
+        except HTTPError as e:
+            return handle_http_error(
+                e, authorization=generate_api_key, log_prefix=self.log_prefix,
+                client_name="OpenAI", error_label="图片API请求失败",
+            )
         except Exception as e:
             logger.error(f"{self.log_prefix} (OpenAI) 图片生成时意外错误: {e!r}", exc_info=True)
             traceback.print_exc()
