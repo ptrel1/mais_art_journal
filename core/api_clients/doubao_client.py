@@ -2,6 +2,7 @@
 from typing import Dict, Any, Tuple
 
 from .base_client import BaseApiClient, NonRetryableError, logger
+from ..utils.prompt_policy import strip_prompt_weights
 
 
 class DoubaoClient(BaseApiClient):
@@ -49,7 +50,11 @@ class DoubaoClient(BaseApiClient):
 
             # 获取模型特定的配置参数
             custom_prompt_add = model_config.get("custom_prompt_add", "")
-            prompt_add = prompt + custom_prompt_add
+            prompt_add = " ".join(part.strip() for part in (prompt, custom_prompt_add) if part.strip())
+            # 豆包没有独立的 negative_prompt 参数；合并后的负面要求必须进入实际提示词。
+            negative = model_config.get("negative_prompt_add", "")
+            if negative.strip():
+                prompt_add += "\nAvoid these visual elements: " + strip_prompt_weights(negative.strip()) + "."
 
             # 构建请求参数
             request_params = {
@@ -99,6 +104,6 @@ class DoubaoClient(BaseApiClient):
             ]
             for code in non_retryable_codes:
                 if code in error_str:
-                    raise NonRetryableError(f"豆包内容审核拒绝: {error_str[:100]}")
+                    raise NonRetryableError(f"豆包内容审核拒绝: {error_str[:100]}") from e
             logger.error(f"{self.log_prefix} (Doubao) 请求异常: {e!r}", exc_info=True)
             return False, f"豆包API请求失败: {error_str[:100]}"

@@ -9,6 +9,7 @@ import logging
 import re
 
 from ..selfie.activity_rules import ACTIVITY_OUTFITS, ACTIVITY_STYLES, choose_auto_style, style_candidates
+from .framing import compatible_styles, requested_framing, resolve_selfie_style
 from .prompt_templates import load_prompt_template
 
 if TYPE_CHECKING:
@@ -127,6 +128,13 @@ async def generate_scene_with_llm(
     失败显式返回 None，由调用方终止生成，不发布与当前活动不一致的图片。
     """
     try:
+        description = photo_description or activity_info.description
+        environment = "; ".join((activity_info.location, activity_info.scene, activity_info.description))
+        selfie_style = resolve_selfie_style(selfie_style, description, environment)
+        allowed_styles = compatible_styles(
+            style_candidates(activity_info) if selfie_style == "auto" else [selfie_style],
+            description, environment,
+        )
         system_prompt = await asyncio.to_thread(build_scene_llm_prompt, selfie_style)
         rule = get_action_for_activity(activity_info, activity_rule=activity_rule, recent_styles=recent_styles)
         payload = {
@@ -140,8 +148,9 @@ async def generate_scene_with_llm(
             "current_time": activity_info.current_time(),
             "photo_description": photo_description,
             "requested_style": selfie_style,
-            "activity_style": rule["selfie_style"],
-            "allowed_styles": style_candidates(activity_info) if selfie_style == "auto" else [selfie_style],
+            "activity_style": rule["selfie_style"] if rule["selfie_style"] in allowed_styles else "photo",
+            "allowed_styles": allowed_styles,
+            "requested_framing": requested_framing(description) or "",
             "recent_styles": (recent_styles or [])[-6:],
             "outfit": outfit or activity_info.outfit or rule["outfit"],
             "character_appearance": bot_appearance,

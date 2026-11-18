@@ -30,7 +30,7 @@ class PluginSection(PluginConfigBase):
         json_schema_extra={"label": "插件名称", "disabled": True, "order": 1},
     )
     config_version: str = Field(
-        default="4.6.5",
+        default="4.6.8",
         description="插件配置版本，由插件自动维护，升级时用于备份和迁移已有配置",
         json_schema_extra={"label": "配置版本", "disabled": True, "order": 2},
     )
@@ -100,6 +100,13 @@ class BasicSection(PluginConfigBase):
         default=True,
         description="是否启用 /dr 风格化与自然语言生图；关闭后仍可使用管理、查询和额度命令",
         json_schema_extra={"label": "图片生成命令", "order": 21},
+    )
+    max_draws_per_request: int = Field(
+        default=1, ge=0, le=20,
+        description="同一条最新用户消息允许智能生图 Tool 调用的次数，默认 1，0 不限制次数。"
+        "触发消息必须经过宿主核验；记录在重载后保留。进入生图客户端后的失败也占次数。"
+        "不限制 /dr 命令、主动图片或外部 API，不等同于宿主回复轮次。",
+        json_schema_extra={"label": "每次用户请求最多生图几次", "order": 22},
     )
     pic_command_model: str = Field(
         default="model1",

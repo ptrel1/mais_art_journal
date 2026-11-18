@@ -32,6 +32,9 @@ test_*
 
 # 本地工具缓存；必要的回归测试与依赖清单进入插件仓库。
 !tests/test_*.py
+# 本次本地回归用例不随发布提交。
+/tests/test_draw_limit.py
+/tests/test_doubao_prompt.py
 .uv-cache/
 .pytest_cache/
 .pytest_tmp_*/

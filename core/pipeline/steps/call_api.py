@@ -44,6 +44,7 @@ class CallApi(BaseStep):
 
         try:
             client = ctx.client_factory(req.api_format)
+            req.generation_started = True
             ok, result = await client.generate_image(
                 prompt=req.description,
                 model_config=req.resolved_model_config,

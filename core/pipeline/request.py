@@ -79,6 +79,8 @@ class GenerationRequest:
     send_timestamp: float = 0.0
     sent_message_id: str = ""
     cache_hit: bool = False
+    # 进入客户端后可能已提交并计费；失败或取消不能重新放行同一用户请求。
+    generation_started: bool = False
     # 只有 SDK 明确返回结果才能确认投递；取消/异常期间保留 unknown，供额度结算。
     delivery_state: Literal["not_sent", "unknown", "sent"] = "not_sent"
     quota_reservation_id: str = ""

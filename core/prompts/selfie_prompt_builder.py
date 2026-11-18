@@ -14,7 +14,8 @@ import logging
 import re
 
 from ..selfie.schedule_provider import ActivityInfo, classify_activity
-from ..utils.prompt_policy import strip_prompt_weights, supports_reference_strength, uses_weighted_tags
+from ..utils.prompt_policy import strip_prompt_weights, supports_reference_strength as supports_reference_strength, uses_weighted_tags
+from .framing import requested_framing, resolve_selfie_style
 from .scene_action_llm import build_scene_llm_prompt, generate_scene_with_llm, get_action_for_activity
 
 if TYPE_CHECKING:
@@ -49,17 +50,38 @@ _PHOTO_HAND_ACTIONS = [
 _STYLE_SCENE_PROMPTS = {
     "standard": "(front-camera selfie:1.2), arm-length viewpoint, phone and holding hand outside frame, face clearly visible",
     "mirror": "(mirror selfie:1.2), single coherent mirror reflection, phone visible only in reflection below face",
-    "photo": "(external camera viewpoint:1.2), candid activity, natural perspective",
+    "photo": "(third-person perspective:1.2), candid activity, natural perspective",
 }
 _STYLE_NEGATIVE_EXTRAS = {
     "standard": "visible phone, mirror selfie, full body selfie, two hands holding a phone",
     "mirror": "phone obscuring face, duplicate person outside reflection, front-camera selfie",
-    "photo": "phone in hands, camera in hands, selfie stick, selfie pose, extra photographer",
+    "photo": "phone in hands, camera in hands, selfie stick, selfie pose, photographer, camera crew, visible photography equipment, studio lighting equipment",
 }
 _STYLE_ACTION_FALLBACKS = {
     "standard": "free hand resting naturally at side",
     "mirror": "free hand resting naturally at side",
     "photo": "hands resting naturally, relaxed posture",
+}
+
+# 局部取景必须描述实际裁切边界，避免“人物肖像”及参考图脸部把画面拉回半身。
+_DETAIL_CROPS = {
+    "lower-body portrait": (
+        "Tightly crop the image from the waist down to the feet. Only the hips, legs and feet are inside the frame; "
+        "the head, face, shoulders and chest are completely outside the frame."
+    ),
+    "leg detail": (
+        "Make a tight close-up of the legs, cropped from mid-thigh to the ankles. The legs fill most of the image; "
+        "the head, face, shoulders, chest and waist are completely outside the frame."
+    ),
+    "foot detail": (
+        "Make a tight close-up of the feet, cropped from the ankles down. The feet fill most of the image; "
+        "the head, face, torso, thighs and knees are completely outside the frame."
+    ),
+}
+_DETAIL_NEGATIVES = {
+    "lower-body portrait": "head in frame, face in frame, shoulders in frame, chest in frame, upper-body portrait, full-body portrait",
+    "leg detail": "head in frame, face in frame, torso in frame, waist in frame, upper-body portrait, full-body portrait",
+    "foot detail": "head in frame, face in frame, torso in frame, thighs in frame, knees in frame, full-body portrait",
 }
 
 
@@ -73,6 +95,12 @@ _MULTI_HAND_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _SELFIE_POSE_PATTERN = re.compile(r"\b(arm extended|reaching toward camera|toward camera|selfie pose|taking selfie)\b|伸手.*镜头", re.IGNORECASE)
+_LOWER_ACTION_PATTERN = re.compile(
+    r"\b(?:legs?|thighs?|knees?|lap|feet|foot|ankles?|stockings?|pants|trousers|shorts|skirt)\b|腿|膝|脚|丝袜|长袜|裙|裤|足元",
+    re.IGNORECASE,
+)
+_HEAD_ACTION_PATTERN = re.compile(r"\b(?:hair|head|face|eyes?|shoulders?|smil\w*)\b|头发|脸|眼|肩|微笑|髪|顔", re.IGNORECASE)
+_ABOVE_FOOT_ACTION_PATTERN = re.compile(r"\b(?:hands?|arms?|knees?|thighs?|waist)\b|手|膝|大腿|腰", re.IGNORECASE)
 
 
 def get_hand_actions_for_style(selfie_style: str) -> List[str]:
@@ -99,6 +127,17 @@ def sanitize_hand_action_for_style(hand_action: Optional[str], selfie_style: str
     return cleaned
 
 
+def sanitize_action_for_framing(action: str, framing: str, style: str) -> str:
+    """服装仍保留，动作不能要求展示取景范围外的身体部位。"""
+    if framing in {"upper-body portrait", "waist-up portrait", "close portrait"} and _LOWER_ACTION_PATTERN.search(action):
+        return _STYLE_ACTION_FALLBACKS[style]
+    if framing in _DETAIL_CROPS and _HEAD_ACTION_PATTERN.search(action):
+        return {"lower-body portrait": "standing naturally", "leg detail": "legs resting naturally", "foot detail": "feet resting naturally"}[framing]
+    if framing == "foot detail" and _ABOVE_FOOT_ACTION_PATTERN.search(action):
+        return "feet resting naturally"
+    return action
+
+
 def build_hand_prompt_for_style(hand_action: Optional[str], selfie_style: str = "standard") -> Optional[str]:
     """动作和持机约束各描述一次。"""
     cleaned = sanitize_hand_action_for_style(hand_action, selfie_style)
@@ -111,11 +150,12 @@ def build_hand_prompt_for_style(hand_action: Optional[str], selfie_style: str = 
     return cleaned
 
 
-def get_negative_prompt_for_style(selfie_style: str, base_negative: str = "") -> str:
+def get_negative_prompt_for_style(selfie_style: str, base_negative: str = "", *, framing: str = "") -> str:
     """组装简洁的手部质量和镜头专属负面词。"""
     return _dedupe_keywords(", ".join(filter(None, [
-        base_negative, "bad anatomy, malformed hands, extra fingers, missing fingers",
+        base_negative, "bad anatomy, malformed hands, extra fingers, missing fingers, additional people, background people",
         _STYLE_NEGATIVE_EXTRAS.get(selfie_style, _STYLE_NEGATIVE_EXTRAS["standard"]),
+        _DETAIL_NEGATIVES.get(framing, ""),
     ])))
 
 
@@ -201,9 +241,13 @@ def _identity_without_outfit(appearance: str) -> str:
 
 def _choose_framing(style: str, environment: str, action: str = "", description: str = "") -> str:
     """按拍摄意图和动作选择单一景别，保留道具与活动所需的画面空间。"""
+    explicit = requested_framing(description)
+    if explicit:
+        return explicit
     text = f"{environment} {action} {description}".lower()
-    full_body = any(word in text for word in ("full body", "full-body", "head to toe", "全身", "全身像"))
-    close = any(word in text for word in ("close-up", "close portrait", "face detail", "脸部特写", "面部特写", "顔のアップ"))
+    context_framing = requested_framing(f"{environment} {action}")
+    full_body = context_framing == "full-body portrait"
+    close = context_framing == "close portrait"
     if close and not full_body:
         return "close portrait"
     if style == "standard":
@@ -217,22 +261,41 @@ def _choose_framing(style: str, environment: str, action: str = "", description:
 
 
 def _render_tags(scene: SelfieScene) -> str:
+    identity = _visible_identity(scene)
+    crop = _DETAIL_CROPS.get(scene.framing, "")
     return _dedupe_keywords(", ".join(filter(None, [
-        "solo character", scene.identity, f"wearing {scene.outfit}",
+        "solo character", "one person only", identity, f"wearing {scene.outfit}",
         scene.environment, build_hand_prompt_for_style(scene.action, scene.style),
-        scene.expression, scene.lighting, scene.framing, get_scene_prompt_for_style(scene.style),
+        "" if crop else scene.expression, scene.lighting, scene.framing, crop, get_scene_prompt_for_style(scene.style),
+        "background limited to the described setting and ordinary scene objects",
         scene.visual_style,
     ])))
 
 
+def _visible_identity(scene: SelfieScene) -> str:
+    """脸和头发不在局部裁切内；只强调能出现在画面里的身份特征。"""
+    if scene.framing not in _DETAIL_CROPS:
+        return scene.identity
+    face_features = re.compile(r"\b(?:hair|hairstyle|eyes?|face|ears?|nose|mouth|lips?|head)\b|头发|发色|脸|眼|耳", re.IGNORECASE)
+    return ", ".join(part.strip() for part in re.split(r"[,，;；]", scene.identity) if not face_features.search(part))
+
+
 def _render_natural(scene: SelfieScene) -> str:
     """直接编排场景结构，避免把长串 SD 标签作为自然语言提示词。"""
-    sentences = [
-        "Create a single coherent image of one character, using the visual medium requested in the scene description; otherwise retain the reference art style when provided.",
-        "Preserve the character's face shape, hairstyle, hair color, eye color and identity from the reference image when provided.",
-    ]
-    if scene.identity:
-        identity = re.sub(r"\b1girl\b", "female character", _strip_weights(scene.identity), flags=re.IGNORECASE)
+    crop = _DETAIL_CROPS.get(scene.framing, "")
+    sentences = [f"{crop} Required framing: {scene.framing}."] if crop else []
+    if scene.framing == "upper-body portrait":
+        sentences.append("Frame only the face, shoulders and upper torso, with the lower image edge at the waist. The legs and feet stay outside the frame even when the outfit includes stockings or trousers.")
+    sentences.append("Create a single coherent image of one character, using the visual medium requested in the scene description; otherwise retain the reference art style when provided.")
+    sentences.append("There is exactly one person in the entire image. The background contains only the specified setting and ordinary scene objects, with no other people.")
+    if crop:
+        sentences.append("Use the reference image only to match the visible body proportions, skin tone and character design. Do not copy its framing or widen the crop to include its face or whole figure.")
+    else:
+        sentences.append("Preserve the character's face shape, hairstyle, hair color, eye color and identity from the reference image when provided.")
+    sentences.append("Use the reference for character design and art style only; do not copy its background or add people and props absent from the specified setting.")
+    visible_identity = _visible_identity(scene)
+    if visible_identity:
+        identity = re.sub(r"\b1girl\b", "female character", _strip_weights(visible_identity), flags=re.IGNORECASE)
         identity = re.sub(r"\b1boy\b", "male character", identity, flags=re.IGNORECASE)
         sentences.append(f"The character's stable appearance is {identity}.")
     if scene.visual_style:
@@ -241,15 +304,23 @@ def _render_natural(scene: SelfieScene) -> str:
         f"Dress the character in {_strip_weights(scene.outfit)}, replacing the reference clothing.",
         f"Use this setting: {_strip_weights(scene.environment)}.",
         f"The action and posture are {_strip_weights(scene.action)}.",
-        f"The expression is {_strip_weights(scene.expression)}, with {_strip_weights(scene.lighting)}.",
-        f"Compose a single {scene.framing} with a readable subject and enough room for the activity and its props.",
+        f"Use {_strip_weights(scene.lighting)}.",
     ])
+    if not crop:
+        sentences.append(f"The expression is {_strip_weights(scene.expression)}.")
+        sentences.append(f"Compose a single {scene.framing} with a readable subject and enough room for the activity and its props.")
+        if scene.framing.startswith("full-body"):
+            sentences.append("The entire character must fit inside the image from the top of the head to both feet; keep both feet visible within the bottom edge.")
     if scene.style == "standard":
-        sentences.append("Use an arm-length front-camera viewpoint with a natural perspective and a clear face. The hand holding the phone and the phone itself stay completely outside the frame; use only the free hand for visible gestures or props.")
+        sentences.append("The finished image is the direct view captured by a front camera: an arm-length self-portrait with a clear face. It is not an observer's picture of someone taking a selfie. The capturing device and the holding hand stay completely outside the frame, beyond every image edge. No visible phone, camera, screen, mirror or reflection; only the free hand may appear for gestures or props.")
     elif scene.style == "mirror":
         sentences.append("Show only the character's reflection in a mirror appropriate to this setting. One hand holds the phone below the face, visible only in the reflection. Follow the described action with the free hand. Keep the face clear, the reflection coherent and the reflected environment consistent with this location.")
     else:
-        sentences.append("Use an external camera viewpoint with a natural perspective, showing a candid moment of the activity. Both hands may follow the described action or use ordinary activity props. Keep phones and cameras out of the character's hands; include no photographer, additional person or selfie pose.")
+        sentences.append("Use a natural third-person perspective of the subject, with the viewing point outside the image. This viewpoint does not introduce any visible recording device or people observing the subject. Keep the character's hands free of phones and cameras, and keep all recording and lighting equipment outside the image.")
+        if not crop:
+            sentences.append("Show a candid moment of the activity; both hands may follow the described action or use ordinary activity props.")
+    if crop:
+        sentences.append("Keep the specified close crop as the final composition. Do not include the excluded body regions to show identity, expression, the setting or activity props.")
     return " ".join(sentences)
 
 
@@ -263,6 +334,11 @@ async def build(
 ) -> SelfiePromptResult:
     """一次场景生成完成身份、换装和动作，再分别输出标签或自然语言。"""
     activity = activity_info or ActivityInfo(classify_activity(description), description)
+    # 先决定能完成用户取景要求的视角，再让场景 LLM 构造动作与持机约束。
+    environment_hint = "; ".join((activity.location, activity.scene, activity.description))
+    if activity_scene is not None:
+        environment_hint += "; " + activity_scene.get("environment", "")
+    selfie_style = resolve_selfie_style(selfie_style, description, environment_hint)
     deterministic_scene = activity_scene is None and not run_scene_optimizer
     if activity_scene is None:
         if run_scene_optimizer:
@@ -279,6 +355,8 @@ async def build(
     style = activity_scene["selfie_style"] if selfie_style == "auto" else selfie_style
     if style not in {"standard", "mirror", "photo"}:
         raise ValueError(f"无效的自拍风格: {style}")
+    # 关闭优化器或调用方提供场景时，同样不能保留与明确景别冲突的旧风格。
+    style = resolve_selfie_style(style, description, activity_scene.get("environment", "") or environment_hint)
     selected_outfit = outfit or activity.outfit or activity_scene["outfit"]
     # 显式动作 > 本次活动动作 > 自然放松；不再强制随机手势。
     action = free_hand_action or ("" if deterministic_scene else activity_scene.get("hand_action")) or _STYLE_ACTION_FALLBACKS[style]
@@ -298,17 +376,21 @@ async def build(
         ) if part.strip()))
     if activity.location and activity.location not in environment:
         environment = f"{activity.location}; {environment}"
+    framing = _choose_framing(style, environment, action, description)
+    visible_action = sanitize_action_for_framing(action, framing, style)
+    if visible_action != action:
+        logger.info("%s 动作与景别 %s 冲突，调整为画面内可展示的动作：%s -> %s", log_prefix, framing, action, visible_action)
     scene = SelfieScene(
         identity=_identity_without_outfit(activity_scene.get("character_identity", bot_appearance)),
-        outfit=selected_outfit, environment=environment, action=action,
+        outfit=selected_outfit, environment=environment, action=visible_action,
         expression="natural expression consistent with the described moment" if deterministic_scene else activity_scene.get("expression", "natural expression"),
         lighting="natural ambient lighting appropriate to the setting" if deterministic_scene else activity_scene.get("lighting", "natural ambient lighting"),
-        style=style, framing=_choose_framing(style, environment, action, description),
+        style=style, framing=framing,
         visual_style=activity_scene.get("visual_style", ""),
     )
     tags = uses_weighted_tags(api_format, prompt_syntax)
     prompt = _render_tags(scene) if tags else _render_natural(scene)
-    negative = get_negative_prompt_for_style(style, base_negative)
+    negative = get_negative_prompt_for_style(style, base_negative, framing=scene.framing)
     if not tags:
         negative = _strip_weights(negative)
     logger.info("%s 自拍提示词已构造：style=%s，framing=%s", log_prefix, style, scene.framing)

@@ -14,6 +14,7 @@ FIELD_TEXT = {
     "basic.prompt_optimizer_enabled": ("提示词优化器", "自动整理画图描述和自拍场景，建议开启；关闭后尺寸判断和配文等仍会使用辅助模型。"),
     "basic.command_prefix": ("画图命令", "默认 /dr，例如 /dr 画一只猫；修改后重启插件生效。"),
     "basic.enable_unified_generation": ("允许聊天请求画图", "开启后，可以直接对麦麦说“帮我画一只猫”；修改后重新加载插件以更新工具入口。"),
+    "basic.max_draws_per_request": ("每次用户请求最多生图几次", "默认 1，0 不限制次数；已进入生图服务的失败也占次数，重载后保留。仅限制智能生图，触发 ID 必须是当前聊天最新的真实用户消息。"),
     "basic.enable_pic_command": ("允许用命令画图", "开启后，可以使用 /dr 画图；关闭后查询和管理命令仍可用。"),
     "basic.pic_command_model": ("命令画图使用的模型", "填写服务的配置编号，例如 model1，请勿留空；当前聊天通过 /dr set 设置的模型优先。"),
     "basic.admin_users": ("可以管理绘卷的用户", "逐项填写用户 ID；只有这些用户能切换设置、调整额度。官方 QQ 使用已绑定 ID 或 OpenID。"),

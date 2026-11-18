@@ -1,6 +1,6 @@
 [project]
 name = "mais-art-journal"
-version = "4.6.5"
+version = "4.6.8"
 description = "麦麦绘卷：多模型生图、原生 NovelAI、日程自拍与聊天额度"
 license = "AGPL-3.0-or-later"
 requires-python = ">=3.12"

@@ -22,5 +22,8 @@
 10. 根据 current_time、timezone、time_window、scene 判断真实时段，只使用一组合理光照。室内可用柔和环境光，室外遵守天气和时段；不知道时不指定日出、正午、金色时刻或季节，不堆叠多个光源效果。表情自然，专注活动不强迫看镜头微笑。
 11. standard 的动作应能由自由的一只手完成，需双手的活动采用休息片刻而非同时完成两个动作；mirror 中手机、脸和镜面关系一致，不重复描述另一张实体人物；photo 保留完成当前活动所需的双手和道具，视角自然，不引入摄影器材。
 
+12. requested_framing 是程序识别的明确景别；保留全身、下半身、腿部或脚部取景要求，不把身体特写改成脸部自拍。程序已限制可用视角，严格从 allowed_styles 选择；仅提到裤子、袜子等服装不代表需要身体特写。
+13. outfit 保留用户服装，但 action 只描述当前景别内可见的动作；普通前置自拍不要因为穿长袜而写展示腿部、手放膝盖或整理袜子的动作。photo 只表示第三人称视点，不是拍摄现场；画面中只有当前角色与指定地点的普通物品，不添加围观者、摄影师、拍摄团队或摄影器材。
+
 示例：做饭，activity_style 为 photo，身份为银发蓝眼。
 {"action":"holding a spatula while cooking","environment":"bright kitchen","expression":"focused smile","lighting":"morning sunlight","outfit":"casual clothes with a cooking apron","selfie_style":"photo","character_identity":"silver hair, blue eyes","visual_style":""}

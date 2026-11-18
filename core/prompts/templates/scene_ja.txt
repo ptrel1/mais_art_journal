@@ -22,5 +22,8 @@
 10. current_time、timezone、time_window、scene から実際の時間帯を判断し、整合した照明を一組だけ使います。室内は自然な環境光、屋外は天候と時間帯に合う光にします。不明な場合は日の出、正午、ゴールデンアワー、季節を決めつけず、複数の照明効果を重ねません。表情は自然にし、集中している人物にカメラへの笑顔を強制しません。
 11. standard の動作は自由な片手でできるものにし、両手の活動では二つの動作を同時に行わせず、一時休止を描きます。mirror のスマートフォン、顔、鏡の位置関係を整合させ、反射以外に同じ人物を加えません。photo は活動に必要な両手と小物を保ち、自然な視点を使い、撮影機材を追加しません。
 
+12. requested_framing はプログラムが認識した明示的な画角です。全身、下半身、脚や足元の画角を保持し、身体のアップを顔の自撮りに変更しないでください。プログラムが撮影視点を制限するため、allowed_styles から厳密に選んでください。ズボンや靴下などの服装だけでは身体のアップを要求したことにはなりません。
+13. outfit では指定された服装を保持し、action では画角内に見える動作だけを記述してください。通常の前面カメラ自撮りでは、長い靴下を履いているからといって脚を見せたり、膝に手を置いたり、靴下を直す動作を追加しません。photo は第三者視点であり、撮影現場ではありません。指定された場所にキャラクターと普通の物だけを描き、観客、撮影者、撮影チーム、撮影機材を追加しないでください。
+
 例：料理中、activity_style は photo、外見は銀髪と青い瞳です。
 {"action":"holding a spatula while cooking","environment":"bright kitchen","expression":"focused smile","lighting":"morning sunlight","outfit":"casual clothes with a cooking apron","selfie_style":"photo","character_identity":"silver hair, blue eyes","visual_style":""}

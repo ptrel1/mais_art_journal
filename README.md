@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/badges.svg" width="326" height="28" alt="v4.6.5 · Python 3.12+ · AGPL-3.0">
+  <img src="docs/images/badges.svg" width="326" height="28" alt="v4.6.8 · Python 3.12+ · AGPL-3.0">
 </p>
 
 <p align="center">
@@ -164,6 +164,16 @@ uv pip install --python .venv/bin/python -r plugins/mais_art_journal/requirement
 | 自拍 | `麦麦，来张自拍` |
 | 风格转换 | 附图或回复图片：`/dr cartoon`（需已配置该风格） |
 
+智能生图默认每条用户请求最多调用一次，可在「聊天与命令画图」设置 **每次用户请求最多生图几次**，0 表示不限制次数。触发 ID 必须是当前聊天最新的真实用户消息；达到上限后需等待用户新消息，不按时间窗口自动恢复。次数记录在插件重载或重启后保留，仅限制智能生图，`/dr`、主动分享和对外 API 沿用各自规则。
+
+明确尚未进入生图客户端且未投递图片的失败会退回本次调用名额；进入客户端后的超时、下载或发送失败仍占次数，因为服务商可能已经计费。成功发送缓存图片也占一次。此限制按用户消息计算，与宿主的回复轮次及群／私聊周期额度分别生效。
+
+角色自拍会保留明确的取景要求：全身、下半身、腿部和脚部取景使用合适的第三人称视角；全身对镜照需场景中确有全身镜。即使默认固定为前置自拍，也会为这些要求调整拍摄方式；仅提到裤子、袜子等服装不改变默认景别。
+
+前置自拍中手机与持机手应在画面外，对镜自拍才显示反射中的手机。局部取景明确指定裁切范围，并只保留画面内可见的角色特征；参考图用于保持角色设计，不要求复制原图构图。豆包的负面要求会写入实际提示词。模型仍可能偏离指令，建议测试人物与局部构图时使用竖图，并确认模型的固定尺寸没有覆盖页面所选尺寸。
+
+动作遵守最终景别：穿长袜的普通自拍不会为了展示服装而加入腿部动作，服装设置仍保留。角色照片只使用指定地点的普通场景物品，第三人称视点不要求加入摄影师、围观者或摄影器材，也不沿用参考图中的额外人物和背景。
+
 <details>
 <summary><strong>管理命令与权限</strong></summary>
 
@@ -233,10 +243,11 @@ uv pip install --python .venv/bin/python -r plugins/mais_art_journal/requirement
 ```toml
 [plugin]
 enabled = true                    # 启用插件
-config_version = "4.6.5"          # 插件配置版本，自动维护，请勿改
+config_version = "4.6.8"          # 插件配置版本，自动维护，请勿改
 
 [basic]
 command_prefix = "/dr"            # 须以 / 开头
+max_draws_per_request = 1         # 每条最新用户消息的智能生图调用上限；0 不限制次数
 default_txt2img_model = "model1"  # 默认文生图模型 ID
 default_img2img_model = ""        # 留空沿用文生图模型
 enable_unified_generation = true  # 启用智能生图 Tool（draw_picture）

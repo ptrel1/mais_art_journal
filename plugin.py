@@ -27,6 +27,7 @@ import os
 import re
 
 from .core.config.models import MaisArtConfig
+from .core.draw_limit import DrawLimiter, resolve_draw_message
 from .core.quota import QuotaStore
 from .core.state import ProactiveStateStore, RuntimeStateManager
 from .core.webui.trial import TrialManager
@@ -105,12 +106,13 @@ class MaisArtPlugin(MaiBotPlugin):
 
     # 智能生图 Tool 描述（2026-08-23 精简：原 1058 字符过长，导致 MaiBot deferred-tools
     # system-reminder 拼成一行后格式异常、挤占上下文。见 GitHub issue#35。仅精简文本，
-    # 功能逻辑 unchanged。保留最核心两条调用规则，具体风格/参数由 Tool 参数与 config 管理。）
+    # 只保留核心触发与重试约束，具体风格/参数由 Tool 参数与 config 管理。）
     _DRAW_TOOL_DESCRIPTION = (
         "智能图片生成：根据描述生成图片（文生图）或基于现有图片进行修改（图生图）。"
         "自动检测是否有输入图片来决定文生图或图生图模式。"
         "仅在用户明确要求画图、生成图片、自拍或修改图片时使用。"
         "不要响应发给其他机器人的画图命令（如 /nai、/sd、/mj）。"
+        "遵守本次用户请求的生图次数上限；不要因自我评估不满意而反复重画。达到上限后等待用户新的要求。"
     )
 
     _DRAW_TOOL_PARAMETERS = {
@@ -125,7 +127,7 @@ class MaisArtPlugin(MaiBotPlugin):
                 "触发本次工具调用的那条用户消息 ID——也就是聊天记录里最近一条要求你画图的 user 消息的 msg_id（"
                 "你在历史消息每条 <message msg_id=\"...\"> 前缀里能看到）。"
                 "用于支持图生图：若用户在那条消息里直接附图或引用了一张图片，插件会自动取图。"
-                "**必填**，缺失时无法进行图生图，仅能文生图。"
+                "必填，必须使用当前聊天最新的用户消息 ID；缺失、过期或不属于当前聊天时拒绝生图。"
             ),
             "required": True,
         },
@@ -166,6 +168,7 @@ class MaisArtPlugin(MaiBotPlugin):
         self.runtime_state = RuntimeStateManager()
         self.proactive_state = ProactiveStateStore()
         self.quota_store = QuotaStore()
+        self._draw_limiter = DrawLimiter()
         self._active_operations: Dict[asyncio.Task, int] = {}
         self._recall_tasks: Set[asyncio.Task] = set()
         self._closing = False
@@ -213,6 +216,7 @@ class MaisArtPlugin(MaiBotPlugin):
             await asyncio.to_thread(migrate_plugin_data, Path(self.plugin_dir) / "data", data_dir)
             await self.runtime_state.load(data_dir / "session_settings.json")
             await self.quota_store.load(data_dir / "quota.sqlite3")
+            await self._draw_limiter.load(data_dir / "draw_limits.sqlite3")
             await self.proactive_state.load(data_dir / "proactive_images.json")
             self._dispatcher = CommandDispatcher(self)
             self._action_pipeline = build_action_pipeline()
@@ -291,7 +295,10 @@ class MaisArtPlugin(MaiBotPlugin):
                         try:
                             await self.quota_store.close()
                         finally:
-                            await self.runtime_state.close()
+                            try:
+                                await self._draw_limiter.close()
+                            finally:
+                                await self.runtime_state.close()
 
     @_tracked_operation
     async def on_config_update(self, scope: str, config_data: dict, version: str) -> None:
@@ -459,13 +466,32 @@ class MaisArtPlugin(MaiBotPlugin):
 
         from .core.pipeline import build_request_from_tool_kwargs, make_pipeline_context
 
-        req = await build_request_from_tool_kwargs(self, kwargs)
-        if req is None:
+        stream_id = str(kwargs.get("stream_id") or "")
+        if not self.runtime_state.is_plugin_enabled(stream_id, self.config.plugin.enabled):
             return False, "已跳过"
-
-        ctx = make_pipeline_context(self, req)
-        out = await self._action_pipeline.run(req, ctx)
-        return out.success, out.user_message or out.error or ("生成成功" if out.success else "生成失败")
+        limit = self.config.basic.max_draws_per_request
+        token = None
+        req = None
+        try:
+            message_id = await resolve_draw_message(self.ctx, stream_id, str(kwargs.get("msg_id") or ""))
+            if limit:
+                token = await self._draw_limiter.acquire(stream_id, message_id, limit)
+                if token is None:
+                    return False, f"本次用户请求最多生成 {limit} 张图片，已达到上限。不要继续调用生图工具；请等待用户新的画图要求。"
+            req = await build_request_from_tool_kwargs(self, kwargs)
+            if req is None:
+                return False, "已跳过"
+            ctx = make_pipeline_context(self, req)
+            out = await self._action_pipeline.run(req, ctx)
+            return out.success, out.user_message or out.error or ("生成成功" if out.success else "生成失败")
+        except (ValueError, RuntimeError) as exc:
+            logger.warning("智能生图已停止：%s", exc)
+            return False, str(exc)
+        finally:
+            if token is not None and (
+                req is None or (not req.generation_started and req.delivery_state == "not_sent" and not req.success)
+            ):
+                await self._draw_limiter.release(token)
 
     # ── API: 对外暴露给其他插件调用 ───────────────────
 
