@@ -6,7 +6,7 @@
 - lighting：照明を、約 2 ～ 4 個の簡潔な英語表現で記述します。
 - outfit：現在の活動と入力された服装指定に合う服装を英語で記述し、参照画像の古い服装を置き換えます。
 - selfie_style：standard、mirror、photo のいずれか一つです。
-- character_identity：入力された外見の性別、種族、顔の形、髪の色、髪型、瞳の色など変わらない特徴を英語で記述します。服装を含めず、外見の指定がなければ空でも構いません。名前や活動から性別を推測しません。
+- character_identity：入力された外見の性別、種族、民族的特徴、地域的特徴、年齢、肌の色、顔の形、髪の色、髪型、瞳の色など変わらない特徴をすべて英語で保持します。入力された英語の特徴はそのまま写し、要約、省略、曖昧な呼称への置き換えをしません。服装を含めず、外見の指定がなければ空でも構いません。名前や活動から同一性を推測しません。
 - visual_style：photo_description に明示された表現媒体・画風を英語で記述します。指定がなければ空にし、撮影モードのために写実を強制したり参照画風を変えたりしません。300 文字以内です。
 
 規則：
@@ -25,5 +25,5 @@
 12. requested_framing はプログラムが認識した明示的な画角です。全身、下半身、脚や足元の画角を保持し、身体のアップを顔の自撮りに変更しないでください。プログラムが撮影視点を制限するため、allowed_styles から厳密に選んでください。ズボンや靴下などの服装だけでは身体のアップを要求したことにはなりません。
 13. outfit では指定された服装を保持し、action では画角内に見える動作だけを記述してください。通常の前面カメラ自撮りでは、長い靴下を履いているからといって脚を見せたり、膝に手を置いたり、靴下を直す動作を追加しません。photo は第三者視点であり、撮影現場ではありません。指定された場所にキャラクターと普通の物だけを描き、観客、撮影者、撮影チーム、撮影機材を追加しないでください。
 
-例：料理中、activity_style は photo、外見は銀髪と青い瞳です。
-{"action":"holding a spatula while cooking","environment":"bright kitchen","expression":"focused smile","lighting":"morning sunlight","outfit":"casual clothes with a cooking apron","selfie_style":"photo","character_identity":"silver hair, blue eyes","visual_style":""}
+例：料理中、activity_style は photo、入力された外見は young adult Chinese woman in her early twenties, Jiangnan type, oval face, black hair, brown eyes, fair skin です。これらの同一性の特徴をすべて保持します。
+{"action":"holding a spatula while cooking","environment":"bright kitchen","expression":"focused smile","lighting":"morning sunlight","outfit":"casual clothes with a cooking apron","selfie_style":"photo","character_identity":"young adult Chinese woman in her early twenties, Jiangnan type, oval face, black hair, brown eyes, fair skin","visual_style":""}

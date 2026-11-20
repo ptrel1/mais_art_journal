@@ -22,6 +22,10 @@
   ${image}            ← 图生图输入图片（自动上传）
 """
 
+from dataclasses import dataclass
+from typing import Any, Dict, Optional, Tuple
+from urllib.parse import unquote, urlencode, urlsplit, urlunsplit
+
 import base64
 import io
 import json
@@ -30,11 +34,19 @@ import random
 import time
 import uuid
 import urllib.request
-from typing import Dict, Any, Tuple, Optional
 
 from PIL import Image
 
-from .base_client import BaseApiClient, logger
+from .base_client import BaseApiClient, NonRetryableError, logger
+
+
+@dataclass(frozen=True)
+class ComfyOutputImage:
+    """history 中的一张输出图，保留 /view 所需的完整定位信息。"""
+
+    filename: str
+    subfolder: str = ""
+    image_type: str = "output"
 
 
 class ComfyUIClient(BaseApiClient):
@@ -248,8 +260,8 @@ class ComfyUIClient(BaseApiClient):
         logger.info(f"{self.log_prefix} (ComfyUI) 任务已提交, prompt_id={prompt_id}")
 
         # ---- 6. 轮询结果 ----
-        image_filename = self._poll_history_sync(base_url, prompt_id, opener, timeout=default_timeout)
-        if not image_filename:
+        output_image = self._poll_history_sync(base_url, prompt_id, opener, timeout=default_timeout)
+        if not output_image:
             # 轮询超时后，检查该任务是否仍滞留于队列（还在排队/运行，而非失败）
             if self._task_in_queue(base_url, prompt_id, opener):
                 # 任务还在队列里慢慢跑，非系统失败——不判为失败，避免上层重试重复提交
@@ -261,12 +273,10 @@ class ComfyUIClient(BaseApiClient):
                 return False, "[QUEUED] 当前画图任务仍在排队/运行，请稍后再试"
             return False, "等待 ComfyUI 生成结果超时"
 
-        logger.info(f"{self.log_prefix} (ComfyUI) 生成完成, filename={image_filename}")
+        logger.info(f"{self.log_prefix} (ComfyUI) 生成完成, filename={output_image.filename}")
 
         # ---- 7. 下载图片 ----
-        image_b64 = self._download_image_sync(base_url, image_filename, opener)
-        if not image_b64:
-            return False, f"下载图片失败: {image_filename}"
+        image_b64 = self._download_image_sync(base_url, output_image, opener, prompt_id=prompt_id)
 
         logger.info(f"{self.log_prefix} (ComfyUI) 图片下载成功, base64 长度: {len(image_b64)}")
         return True, image_b64
@@ -293,8 +303,8 @@ class ComfyUIClient(BaseApiClient):
             logger.error(f"{self.log_prefix} (ComfyUI) 提交任务异常: {e}")
         return None
 
-    def _poll_history_sync(self, base_url: str, prompt_id: str, opener: urllib.request.OpenerDirector, timeout: int = 600) -> Optional[str]:
-        """同步轮询 ComfyUI history，等待任务完成并返回输出图片文件名"""
+    def _poll_history_sync(self, base_url: str, prompt_id: str, opener: urllib.request.OpenerDirector, timeout: int = 600) -> Optional[ComfyOutputImage]:
+        """同步轮询 ComfyUI history，等待任务完成并返回输出图片定位信息。"""
         url = f"{base_url}/history/{prompt_id}"
         start = time.time()
 
@@ -305,7 +315,7 @@ class ComfyUIClient(BaseApiClient):
                     if resp.status == 200:
                         history = json.loads(resp.read().decode("utf-8"))
                         if prompt_id in history:
-                            return self._extract_filename(history[prompt_id])
+                            return self._extract_output_image(history[prompt_id])
             except Exception:
                 pass  # 网络抖动，继续轮询
             time.sleep(1)
@@ -314,32 +324,141 @@ class ComfyUIClient(BaseApiClient):
         return None
 
     @staticmethod
-    def _extract_filename(task_data: dict) -> Optional[str]:
-        """从 history 条目中提取输出图片文件名"""
-        try:
-            outputs = task_data.get("outputs", {})
-            for _node_id, node_output in outputs.items():
-                if "images" in node_output:
-                    for img in node_output["images"]:
-                        if "filename" in img:
-                            return img["filename"]
-        except Exception:
-            pass
+    def _extract_output_image(task_data: dict) -> Optional[ComfyOutputImage]:
+        """从 history 条目中提取第一张图片的文件名、子目录和文件类型。"""
+        outputs = task_data.get("outputs", {})
+        if not isinstance(outputs, dict):
+            return None
+        for node_output in outputs.values():
+            if not isinstance(node_output, dict) or not isinstance(node_output.get("images"), list):
+                continue
+            for image in node_output["images"]:
+                if not isinstance(image, dict):
+                    continue
+                filename = image.get("filename")
+                subfolder = image.get("subfolder", "")
+                image_type = image.get("type", "output")
+                if (
+                    isinstance(filename, str) and filename
+                    and isinstance(subfolder, str)
+                    and isinstance(image_type, str) and image_type in {"output", "temp", "input"}
+                ):
+                    return ComfyOutputImage(filename, subfolder, image_type)
         return None
 
-    def _download_image_sync(self, base_url: str, filename: str, opener: urllib.request.OpenerDirector) -> Optional[str]:
-        """从 ComfyUI 下载生成的图片，返回 base64 字符串"""
-        url = f"{base_url}/view?filename={urllib.request.quote(filename)}&subfolder=&type=output"
+    @staticmethod
+    def _encode_output_image(raw: bytes) -> str:
+        """验证实际图片内容；HTTP 200 的 JSON 错误体不能被当成 base64 图片。"""
         try:
-            req = urllib.request.Request(url, method="GET")
-            with opener.open(req, timeout=30) as resp:
-                if resp.status == 200:
-                    return base64.b64encode(resp.read()).decode("utf-8")
-                else:
-                    logger.error(f"{self.log_prefix} (ComfyUI) 下载图片失败, status={resp.status}")
-        except Exception as e:
-            logger.error(f"{self.log_prefix} (ComfyUI) 下载图片异常: {e}")
-        return None
+            error = json.loads(raw)
+        except (ValueError, UnicodeDecodeError):
+            error = None
+        if isinstance(error, dict):
+            raise ValueError(f"下载响应为 JSON：code={error.get('code')!r}, msg={error.get('msg', '')!r}")
+        try:
+            with Image.open(io.BytesIO(raw)) as image:
+                if image.format not in {"PNG", "JPEG", "GIF", "WEBP"}:
+                    raise ValueError(f"不支持的图片格式: {image.format}")
+                image.verify()
+            # verify 检查容器；解码检查 JPEG 等格式的截断像素数据。
+            with Image.open(io.BytesIO(raw)) as image:
+                image.load()
+        except (OSError, ValueError, SyntaxError) as exc:
+            raise ValueError("下载响应不是有效的 PNG/JPEG/GIF/WebP 图片") from exc
+        return base64.b64encode(raw).decode("ascii")
+
+    def _download_output_url(self, url: str, opener: urllib.request.OpenerDirector) -> str:
+        """下载并验证一张图片；所有调用均在客户端工作线程内完成。"""
+        with opener.open(urllib.request.Request(url, method="GET"), timeout=30) as response:
+            if response.status != 200:
+                raise ValueError(f"图片下载 HTTP 状态: {response.status}")
+            return self._encode_output_image(response.read())
+
+    @staticmethod
+    def _runninghub_proxy(base_url: str) -> Optional[Tuple[str, str]]:
+        """仅对 RunningHub 官方 HTTPS 代理启用产物接口，返回 origin 和代理密钥。"""
+        parsed = urlsplit(base_url)
+        if parsed.scheme != "https" or parsed.hostname not in {
+            "runninghub.ai", "www.runninghub.ai", "runninghub.cn", "www.runninghub.cn",
+        }:
+            return None
+        parts = parsed.path.strip("/").split("/")
+        if len(parts) != 2 or parts[0] != "proxy" or not parts[1]:
+            return None
+        return urlunsplit((parsed.scheme, parsed.netloc, "", "", "")), unquote(parts[1])
+
+    def _download_runninghub_output(
+        self, proxy: Tuple[str, str], image: ComfyOutputImage,
+        prompt_id: str, opener: urllib.request.OpenerDirector,
+    ) -> str:
+        """通过 RunningHub 当前任务的产物直链取图，不重新提交工作流。"""
+        origin, api_key = proxy
+        request = urllib.request.Request(
+            f"{origin}/task/openapi/outputs",
+            data=json.dumps({"apiKey": api_key, "taskId": prompt_id}).encode("utf-8"),
+            headers={"Content-Type": "application/json"}, method="POST",
+        )
+        with opener.open(request, timeout=15) as response:
+            if response.status != 200:
+                raise ValueError(f"RunningHub 产物接口 HTTP 状态: {response.status}")
+            result = json.loads(response.read())
+        if not isinstance(result, dict):
+            raise ValueError("RunningHub 产物接口必须返回 JSON 对象")
+        if result.get("code") != 0:
+            raise ValueError(f"RunningHub 产物接口：code={result.get('code')!r}, msg={result.get('msg', '')!r}")
+        if not isinstance(result.get("data"), list):
+            raise ValueError("RunningHub 产物接口未返回文件列表")
+        candidates: Dict[str, str] = {}
+        for item in result["data"]:
+            if not isinstance(item, dict) or not isinstance(item.get("fileUrl"), str):
+                continue
+            file_url = item["fileUrl"]
+            parsed = urlsplit(file_url)
+            if parsed.scheme not in {"https", "http"} or not parsed.netloc:
+                continue
+            file_type = str(item.get("fileType", "")).lower().lstrip(".")
+            filename = unquote(parsed.path).rsplit("/", 1)[-1]
+            if file_type and file_type not in {"png", "jpg", "jpeg", "gif", "webp", "image", "image/png", "image/jpeg", "image/gif", "image/webp"}:
+                continue
+            if not file_type and filename.lower().rsplit(".", 1)[-1] not in {"png", "jpg", "jpeg", "gif", "webp"}:
+                continue
+            candidates[file_url] = str(item.get("fileName") or filename)
+        matches = [url for url, filename in candidates.items() if filename == image.filename]
+        if len(matches) == 1:
+            target = matches[0]
+        elif not matches and len(candidates) == 1:
+            target = next(iter(candidates))
+        else:
+            raise ValueError(f"RunningHub 产物无法唯一匹配图片 {image.filename!r}（候选 {len(candidates)} 个）")
+        return self._download_output_url(target, opener)
+
+    def _download_image_sync(
+        self, base_url: str, image: ComfyOutputImage,
+        opener: urllib.request.OpenerDirector, *, prompt_id: str,
+    ) -> str:
+        """验证 /view 响应并适配 RunningHub；失败只重试取图，禁止再次生图。"""
+        query = urlencode({"filename": image.filename, "subfolder": image.subfolder, "type": image.image_type})
+        view_url = f"{base_url}/view?{query}"
+        proxy = self._runninghub_proxy(base_url)
+        errors: Dict[str, str] = {}
+        for attempt in range(2):
+            try:
+                return self._download_output_url(view_url, opener)
+            except Exception as exc:
+                errors["/view"] = str(exc)
+            if proxy:
+                try:
+                    return self._download_runninghub_output(proxy, image, prompt_id, opener)
+                except Exception as exc:
+                    errors["RunningHub 产物"] = str(exc)
+            # 地址可能含密钥；错误日志和对外提示都必须去掉它。
+            detail = "; ".join(f"{source}: {error}" for source, error in errors.items()).replace(base_url, "[ComfyUI]")
+            if proxy:
+                detail = detail.replace(proxy[1], "[redacted]")
+            logger.warning("%s (ComfyUI) 图片获取失败（第 %s 次）：%s", self.log_prefix, attempt + 1, detail[:500])
+            if attempt == 0:
+                time.sleep(1)
+        raise NonRetryableError(f"ComfyUI 任务 {prompt_id} 已生成，图片获取失败：{detail[:500]}；不会自动重新提交生图任务")
 
     def _resize_image_b64_for_img2img(
         self,

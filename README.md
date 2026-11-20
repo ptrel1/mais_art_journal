@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/badges.svg" width="326" height="28" alt="v4.6.8 · Python 3.12+ · AGPL-3.0">
+  <img src="docs/images/badges.svg" width="326" height="28" alt="v4.6.9 · Python 3.12+ · AGPL-3.0">
 </p>
 
 <p align="center">
@@ -243,7 +243,7 @@ uv pip install --python .venv/bin/python -r plugins/mais_art_journal/requirement
 ```toml
 [plugin]
 enabled = true                    # 启用插件
-config_version = "4.6.8"          # 插件配置版本，自动维护，请勿改
+config_version = "4.6.9"          # 插件配置版本，自动维护，请勿改
 
 [basic]
 command_prefix = "/dr"            # 须以 / 开头
@@ -395,6 +395,8 @@ wait_seconds = 600               # 最长出图轮询时间（秒）
 | `${image}` / `${denoise}` | 图生图源图、降噪强度 |
 
 图生图必须包含 `${image}`，其他占位符按需使用，未替换字段保留原值。轮询由 `comfyui.wait_seconds` 控制，不受 `proxy.timeout` 影响。命令、Tool 和公开 API 上限 660 秒；调用方的更短超时和主动任务周期仍会提前结束生成。
+
+下载保留工作流输出的子目录和文件类型，并校验实际图片内容。RunningHub 官方代理地址可填写 `https://www.runninghub.ai/proxy/<api_key>`；当 `/view` 无法取图时，插件通过当前任务的产物接口下载图片直链。取图失败只重试下载，不自动重复提交已完成的生图任务。
 
 </details>
 

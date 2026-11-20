@@ -353,10 +353,17 @@ def test_unload_drains_active_tool_and_finishes_accounting_before_close(tmp_path
         monkeypatch.setattr("mais_art_journal.core.pipeline.build_request_from_tool_kwargs", AsyncMock(return_value=req))
         monkeypatch.setattr("mais_art_journal.core.pipeline.make_pipeline_context", lambda plugin, req: SimpleNamespace(plugin=plugin))
         monkeypatch.setattr(plugin.quota_store, "settle", delayed_settle)
-        running = asyncio.create_task(plugin.handle_draw_picture())
-        await sending.wait()
+        streams = plugin.ctx.call_capability.return_value
+        async def capability(name: str, **kwargs: Any) -> Any:
+            if name == "message.get_recent":
+                return [{"message_id": "trigger-message", "session_id": SESSION,
+                         "message_info": {"user_info": {"user_id": "2002"}}}]
+            return streams
+        plugin.ctx.call_capability.side_effect = capability
+        running = asyncio.create_task(plugin.handle_draw_picture(stream_id=SESSION, msg_id="trigger-message"))
+        await asyncio.wait_for(sending.wait(), 5)
         unloading = asyncio.create_task(plugin.on_unload())
-        await settling.wait()
+        await asyncio.wait_for(settling.wait(), 5)
         assert plugin.quota_store.loaded
         unloading.cancel()
         await asyncio.sleep(0)

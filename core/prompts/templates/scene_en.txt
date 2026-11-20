@@ -6,7 +6,7 @@ Output only one valid JSON object containing exactly these eight string fields:
 - lighting: concise English lighting, about 2 to 4 descriptive terms.
 - outfit: English clothing description appropriate to this activity and the supplied outfit requirements, replacing the old reference outfit.
 - selfie_style: exactly standard, mirror or photo.
-- character_identity: stable identity features from the supplied appearance, including gender, species, face shape, hair color, hairstyle and eye color, in English without clothing. May be empty when no appearance is supplied; do not infer gender from a name or activity.
+- character_identity: preserve every stable identity feature from the supplied appearance, including gender, species, ethnicity, regional traits, age, skin tone, face shape, hair color, hairstyle and eye color, in English without clothing. Copy supplied English traits verbatim; do not summarize, omit them or replace them with vague labels. May be empty when no appearance is supplied; do not infer identity from a name or activity.
 - visual_style: the medium/art style explicitly requested in photo_description, in English. Use an empty string when unspecified; do not force photorealism or change the reference style because of a camera mode. Maximum 300 characters.
 
 Rules:
@@ -25,5 +25,5 @@ Rules:
 12. requested_framing is the explicit framing recognized by the program. Preserve full-body, lower-body, leg or foot framing; do not turn a body detail into a face selfie. The program restricts compatible viewpoints: select strictly from allowed_styles. Mentioning trousers, stockings or other clothing alone does not request a body detail.
 13. Preserve requested clothing in outfit, but describe only actions visible within the framing in action. For an ordinary front-camera selfie, stockings do not require showing legs, resting a hand on a knee or adjusting stockings. photo means a third-person viewpoint, not a photo shoot. Include only the character and ordinary objects in the specified setting, without spectators, photographers, a camera crew or photographic equipment.
 
-Example: cooking, activity_style photo, identity silver hair and blue eyes.
-{"action":"holding a spatula while cooking","environment":"bright kitchen","expression":"focused smile","lighting":"morning sunlight","outfit":"casual clothes with a cooking apron","selfie_style":"photo","character_identity":"silver hair, blue eyes","visual_style":""}
+Example: cooking, activity_style photo, supplied appearance young adult Chinese woman in her early twenties, Jiangnan type, oval face, black hair, brown eyes, fair skin. Preserve all of these identity traits.
+{"action":"holding a spatula while cooking","environment":"bright kitchen","expression":"focused smile","lighting":"morning sunlight","outfit":"casual clothes with a cooking apron","selfie_style":"photo","character_identity":"young adult Chinese woman in her early twenties, Jiangnan type, oval face, black hair, brown eyes, fair skin","visual_style":""}

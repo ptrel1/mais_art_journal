@@ -198,8 +198,7 @@ async def generate_scene_with_llm(
         style = scene["selfie_style"].strip()
         if style not in payload["allowed_styles"]:
             raise ValueError(f"场景构图 {style!r} 不符合本轮场景允许的构图")
-        if bot_appearance and not scene["character_identity"].strip():
-            raise ValueError("场景 LLM 丢失了角色身份特征")
+        # 最终固定身份由自拍构造器从配置提取；LLM 省略身份不能阻止有效场景生成。
         visual_style = scene.get("visual_style", "")
         if not isinstance(visual_style, str) or len(visual_style) > 300:
             raise ValueError("场景 LLM 返回无效画风")

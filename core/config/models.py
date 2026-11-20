@@ -30,7 +30,7 @@ class PluginSection(PluginConfigBase):
         json_schema_extra={"label": "插件名称", "disabled": True, "order": 1},
     )
     config_version: str = Field(
-        default="4.6.8",
+        default="4.6.9",
         description="插件配置版本，由插件自动维护，升级时用于备份和迁移已有配置",
         json_schema_extra={"label": "配置版本", "disabled": True, "order": 2},
     )

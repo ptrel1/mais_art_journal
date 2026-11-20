@@ -227,7 +227,7 @@ def _strip_weights(text: str) -> str:
 def _identity_without_outfit(appearance: str) -> str:
     """从旧外观前缀排除服装片段，避免参考服装压过活动换装。"""
     clothing = re.compile(
-        r"\b(?:outfit|clothes|clothing|dress|shirt|skirt|uniform|jacket|coat|pants|trousers|"
+        r"\b(?:outfit|clothes|clothing|wear|attire|costume|garments?|dress|shirt|skirt|uniform|jacket|coat|pants|trousers|"
         r"pajamas|swimwear|sportswear|apron|shoes|socks|stockings|hat|hoodie|sweater|bathrobe)\b|"
         r"衣|服|裙|裤|鞋|袜|帽|围裙|睡袍|女仆装|泳装", re.IGNORECASE,
     )
@@ -332,7 +332,7 @@ async def build(
     activity_rule: Optional[Dict[str, str]] = None, outfit: str = "", api_format: str = "openai",
     prompt_syntax: str = "auto", timeout_seconds: float = 45, recent_styles: Optional[List[str]] = None,
 ) -> SelfiePromptResult:
-    """一次场景生成完成身份、换装和动作，再分别输出标签或自然语言。"""
+    """场景生成负责换装和动作，固定身份优先使用配置，再输出标签或自然语言。"""
     activity = activity_info or ActivityInfo(classify_activity(description), description)
     # 先决定能完成用户取景要求的视角，再让场景 LLM 构造动作与持机约束。
     environment_hint = "; ".join((activity.location, activity.scene, activity.description))
@@ -380,8 +380,11 @@ async def build(
     visible_action = sanitize_action_for_framing(action, framing, style)
     if visible_action != action:
         logger.info("%s 动作与景别 %s 冲突，调整为画面内可展示的动作：%s -> %s", log_prefix, framing, action, visible_action)
+    # 配置是固定身份的权威来源，不能让场景 LLM 的概括覆盖族裔、年龄等特征。
+    # 服装仍单独清理，局部取景仍由 _visible_identity 排除画面外的特征。
+    identity_source = bot_appearance if bot_appearance.strip() else activity_scene.get("character_identity", "")
     scene = SelfieScene(
-        identity=_identity_without_outfit(activity_scene.get("character_identity", bot_appearance)),
+        identity=_identity_without_outfit(identity_source),
         outfit=selected_outfit, environment=environment, action=visible_action,
         expression="natural expression consistent with the described moment" if deterministic_scene else activity_scene.get("expression", "natural expression"),
         lighting="natural ambient lighting appropriate to the setting" if deterministic_scene else activity_scene.get("lighting", "natural ambient lighting"),

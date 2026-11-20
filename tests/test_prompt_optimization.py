@@ -148,7 +148,7 @@ def test_three_selfie_modes_preserve_scene_props_identity_and_coherent_framing(
     elif style == "mirror":
         assert "below the face" in result.prompt or "below face" in result.prompt
     else:
-        assert "external camera viewpoint" in result.prompt
+        assert "third-person perspective" in result.prompt
 
 
 def test_optimizer_disabled_preserves_the_requested_scene_without_inventing_a_setting() -> None:
@@ -172,7 +172,9 @@ def test_scene_optimizer_preserves_explicit_visual_medium_in_final_prompt(backen
         bot_appearance="1girl, silver hair, blue eyes", api_format=backend,
     ))
     assert "watercolor illustration" in result.prompt and result.photo_plan["visual_style"] == "watercolor illustration"
-    assert "female character" in result.prompt and "Create a photograph" not in result.prompt
+    # 身份来自配置：标签后端保留 1girl，自然语言后端按既有规则转为 female character。
+    identity = "1girl" if backend == "novelai" else "female character"
+    assert identity in result.prompt and "Create a photograph" not in result.prompt
 
 
 @pytest.mark.parametrize("backend,identity", [("gemini", "female character"), ("novelai", "1girl")])

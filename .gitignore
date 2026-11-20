@@ -5,6 +5,7 @@ logs/
 
 # 忽略特定目录
 old/
+workflow/
 config_back/
 __pycache__/
 .claude
@@ -40,6 +41,12 @@ test_*
 .pytest_tmp_*/
 .venv/
 .artifacts/
+
+# 本地验证产物、设备专用工作流和本次回归文件，不随插件发布。
+/verification_artifacts/
+/workflow/krea2_2stage_txt2img_api.json
+/tests/test_comfyui_download.py
+/tests/test_selfie_identity.py
 
 # 本地聊天设置与额度账本，不进入插件源码仓库。
 data/
